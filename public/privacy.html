@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Oreugo POS</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+  h1 { color: #195937; border-bottom: 2px solid #195937; padding-bottom: 8px; }
+  h2 { color: #202F27; margin-top: 32px; }
+  a { color: #195937; }
+  .updated { color: #666; font-size: 0.9em; margin-bottom: 32px; }
+  ul { padding-left: 24px; }
+  li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy — Oreugo POS</h1>
+<p class="updated">Last updated: August 20, 2026</p>
+
+<p>Oreugo POS ("the app") is a point-of-sale application for staff of businesses
+that subscribe to the Oreugo platform. This policy explains what information the
+app collects, how it's used, and how it's protected.</p>
+
+<h2>Who uses the app</h2>
+<p>Oreugo POS is used by owners and staff of Oreugo merchant accounts. The app is
+not intended for use by consumers or the general public.</p>
+
+<h2>Information we collect</h2>
+<ul>
+  <li><strong>Account credentials</strong> — the email and password you sign in with,
+    used to authenticate you against your Oreugo merchant account.</li>
+  <li><strong>Session tokens</strong> — a secure JSON Web Token stored on the device
+    using Android's EncryptedSharedPreferences so you don't have to sign in
+    every time you open the app.</li>
+  <li><strong>Business operations data</strong> — orders you create, items rung up,
+    payments taken, cash drawer sessions, time-clock entries, and daily sales
+    reports. This data belongs to your merchant account and is stored on Oreugo
+    servers under that account.</li>
+  <li><strong>Customer contact information</strong> — when you attach a customer to
+    an order (name, phone, email), that information is stored on the order
+    record on behalf of your merchant account.</li>
+</ul>
+
+<h2>Information we do NOT collect</h2>
+<ul>
+  <li>Your device's location</li>
+  <li>Camera or microphone data</li>
+  <li>Contacts, photos, or files outside the app</li>
+  <li>Advertising identifiers or third-party analytics</li>
+  <li>Your customers' payment card numbers — card payments are processed
+    directly by our card processing partners (see below); we do not see or store
+    card numbers.</li>
+</ul>
+
+<h2>How we store and protect your data</h2>
+<ul>
+  <li>All network traffic between the app and Oreugo servers is encrypted over
+    HTTPS (TLS 1.2+).</li>
+  <li>Session tokens on your device are stored in Android's
+    EncryptedSharedPreferences, backed by the Android Keystore.</li>
+  <li>Business data on Oreugo servers is stored in Amazon Aurora databases
+    running inside a private cloud network with restricted access.</li>
+  <li>Only authorized Oreugo staff with a legitimate operational need can access
+    production data, and access is logged.</li>
+</ul>
+
+<h2>Third-party services</h2>
+<p>The app relies on the following third parties to function:</p>
+<ul>
+  <li><strong>Global Payments (UCI)</strong> — processes card-present payments
+    when your business is configured with a Global Payments terminal.</li>
+  <li><strong>Moneris</strong> — processes card-present payments (DX8000 terminal)
+    and hosted checkout QR code payments (Moneris Checkout).</li>
+  <li><strong>Amazon Web Services</strong> — hosts the Oreugo backend, database,
+    and file storage in the Canada (Central) region.</li>
+</ul>
+<p>Card payment details are transmitted directly from the customer's card /
+terminal to the payment processor and are never seen or stored by Oreugo.</p>
+
+<h2>Data sharing</h2>
+<p>Oreugo does not sell your data or your customers' data to any third party.
+We share data only:</p>
+<ul>
+  <li>With the payment processor you have configured, to process a transaction
+    you initiate.</li>
+  <li>When required to comply with applicable law or a valid legal request.</li>
+</ul>
+
+<h2>Data retention and deletion</h2>
+<p>Business data stays associated with your merchant account for as long as the
+account is active. To request deletion of specific records or of your entire
+account, contact us at the email below. Deletion requests are processed within
+30 days.</p>
+
+<h2>Children</h2>
+<p>Oreugo POS is a business tool intended for people aged 18 and over. It is not
+directed to children under 13, and we do not knowingly collect information from
+children.</p>
+
+<h2>Changes to this policy</h2>
+<p>If we make material changes to this policy, we will update the "Last updated"
+date at the top of this page and, where appropriate, notify merchants through
+the app or by email.</p>
+
+<h2>Contact</h2>
+<p>Questions or requests: <a href="mailto:support@oreugo.ca">support@oreugo.ca</a></p>
+
+</body>
+</html>

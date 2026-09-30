@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="hub icon">
+  <rect width="96" height="96" rx="20" ry="20" fill="#0F766E"/>
+  <text x="50%" y="63%" text-anchor="middle"
+        font-family="Inter Tight, Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+        font-weight="800"
+        font-size="60"
+        letter-spacing="-2"
+        fill="#F7F5EF">h</text>
+</svg>

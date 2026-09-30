@@ -1,0 +1,282 @@
+// ============================================================================
+// POST /api/public/v1/payments — Phase I #6 (2026-09-18)
+//
+// Public inbound Payments API. Partners (SDL's other site, third-party
+// integrations) POST here with a bearer key to create a hosted checkout
+// for their customer. We spawn an ephemeral SupplierPaymentLink carrying
+// the partner-supplied webhook config, spin an invoice from it, and hand
+// back a checkout URL to redirect the customer to.
+//
+// On payment success/failure, our existing outbound-webhook dispatcher
+// (fireWebhookForLink) POSTs the partner's webhook URL with the rendered
+// template body + HMAC signature.
+//
+// Request:
+//   Authorization: Bearer sk_...
+//   Content-Type: application/json
+//
+//   {
+//     "amount": 1000,                       // integer cents (required)
+//     "currency": "cad",                    // ISO 4217 (optional; default CAD)
+//     "customer": {                         // required
+//       "email": "buyer@example.com",       // required
+//       "name":  "Buyer Name",              // optional
+//       "phone": "+14165551234",            // optional
+//       "company": "Acme Inc."              // optional
+//     },
+//     "description": "Product X — Order #42",  // shown on hosted checkout
+//     "webhook_url":      "https://partner.example.com/hooks/payment",
+//     "webhook_secret":   "<partner-supplied HMAC secret; optional>",
+//     "webhook_template": "{\"id\":\"{{event.id}}\",\"amount\":{{payment.amount}}}",
+//     "webhook_events":   ["payment.succeeded", "payment.failed"],
+//     "metadata": { "order_id": "42", "sku": "abc" }  // echoed via {{metadata.*}}
+//   }
+//
+// Response 201:
+//   {
+//     "id":           "<invoice-id>",
+//     "status":       "created",
+//     "amount":       1000,
+//     "currency":     "cad",
+//     "checkout_url": "https://hub.synergydatalabs.com/pay/invoice/<id>",
+//     "created_at":   "2026-09-18T12:34:56.000Z"
+//   }
+// ============================================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import {
+  requireApiKey,
+  apiErrorResponse,
+  PUBLIC_API_CORS_HEADERS,
+  corsPreflightResponse,
+} from "@/lib/api-keys";
+import { resolvePublicOrigin } from "@/lib/public-origin";
+import { createPaymentLink, createInvoiceFromLink } from "@/lib/payment-link.service";
+import prisma from "@/lib/prisma";
+
+const ALLOWED_EVENTS = new Set(["payment.succeeded", "payment.failed", "payment.refunded", "invoice.paid"]);
+const MAX_AMOUNT_CENTS = 999_999_99; // $999,999.99 — sanity cap
+const CURRENCY_RE = /^[a-zA-Z]{3}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE = /^https?:\/\/[^\s]+$/i;
+
+interface PaymentRequestBody {
+  amount?: unknown;
+  currency?: unknown;
+  customer?: unknown;
+  description?: unknown;
+  webhook_url?: unknown;
+  webhook_secret?: unknown;
+  webhook_template?: unknown;
+  webhook_events?: unknown;
+  metadata?: unknown;
+}
+
+function badRequest(message: string, field?: string) {
+  return NextResponse.json(
+    { error: { type: "invalid_request_error", message, ...(field ? { param: field } : {}) } },
+    { status: 400, headers: PUBLIC_API_CORS_HEADERS }
+  );
+}
+
+export async function OPTIONS() {
+  return corsPreflightResponse();
+}
+
+export async function POST(request: NextRequest) {
+  // 1) Auth
+  const auth = await requireApiKey(request);
+  if (!auth.ok) {
+    const { status, body, headers } = apiErrorResponse(auth.error);
+    return NextResponse.json(body, {
+      status,
+      headers: { ...PUBLIC_API_CORS_HEADERS, ...(headers ?? {}) },
+    });
+  }
+  const { id: apiKeyId, tenantId } = auth.key;
+
+  // 2) Parse body
+  let raw: PaymentRequestBody;
+  try {
+    raw = (await request.json()) as PaymentRequestBody;
+  } catch {
+    return badRequest("Invalid JSON body");
+  }
+
+  // 3) Validate required fields
+  const amount = Number(raw.amount);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return badRequest("`amount` must be a positive integer (cents)", "amount");
+  }
+  if (amount > MAX_AMOUNT_CENTS) {
+    return badRequest(`\`amount\` exceeds max of ${MAX_AMOUNT_CENTS} cents`, "amount");
+  }
+
+  const currency = typeof raw.currency === "string" && raw.currency.trim()
+    ? raw.currency.trim().toUpperCase()
+    : "CAD";
+  if (!CURRENCY_RE.test(currency)) {
+    return badRequest("`currency` must be an ISO 4217 alpha-3 code", "currency");
+  }
+
+  if (!raw.customer || typeof raw.customer !== "object") {
+    return badRequest("`customer` object is required", "customer");
+  }
+  const customer = raw.customer as Record<string, unknown>;
+  const customerEmail = typeof customer.email === "string" ? customer.email.trim().toLowerCase() : "";
+  if (!EMAIL_RE.test(customerEmail)) {
+    return badRequest("`customer.email` is required and must be a valid email", "customer.email");
+  }
+  const customerName =
+    typeof customer.name === "string" && customer.name.trim() ? customer.name.trim().slice(0, 255) : null;
+  const customerPhone =
+    typeof customer.phone === "string" && customer.phone.trim() ? customer.phone.trim().slice(0, 40) : null;
+  const customerCompany =
+    typeof customer.company === "string" && customer.company.trim()
+      ? customer.company.trim().slice(0, 255)
+      : null;
+
+  const description =
+    typeof raw.description === "string" && raw.description.trim()
+      ? raw.description.trim().slice(0, 500)
+      : null;
+
+  // Webhook fields — all optional, but if a URL is given it must be valid.
+  const webhookUrl =
+    typeof raw.webhook_url === "string" && raw.webhook_url.trim() ? raw.webhook_url.trim() : null;
+  if (webhookUrl && !URL_RE.test(webhookUrl)) {
+    return badRequest("`webhook_url` must be an http(s) URL", "webhook_url");
+  }
+  const webhookSecret =
+    typeof raw.webhook_secret === "string" && raw.webhook_secret.trim()
+      ? raw.webhook_secret.trim().slice(0, 128)
+      : null;
+  const webhookTemplate =
+    typeof raw.webhook_template === "string" && raw.webhook_template.trim()
+      ? raw.webhook_template
+      : null;
+
+  let webhookEvents: string[] = ["payment.succeeded", "payment.failed"];
+  if (Array.isArray(raw.webhook_events)) {
+    const filtered = raw.webhook_events
+      .filter((e): e is string => typeof e === "string")
+      .filter((e) => ALLOWED_EVENTS.has(e));
+    if (filtered.length > 0) webhookEvents = filtered;
+  }
+
+  const metadata =
+    raw.metadata && typeof raw.metadata === "object" && !Array.isArray(raw.metadata)
+      ? (raw.metadata as Record<string, unknown>)
+      : {};
+
+  // 4) Verify tenant is active + has a payment processor wired. Bailing
+  // early here gives partners a clear 402 instead of a downstream Stripe
+  // error at checkout time.
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      id: true,
+      status: true,
+      currency: true,
+      tenantPaymentProviders: {
+        where: { status: "ACTIVE" },
+        select: { id: true, processor: true, capability: true },
+      },
+    },
+  });
+  if (!tenant || tenant.status !== "ACTIVE") {
+    return NextResponse.json(
+      { error: { type: "tenant_error", message: "Tenant is not active" } },
+      { status: 403, headers: PUBLIC_API_CORS_HEADERS }
+    );
+  }
+  const hasCardProcessor = tenant.tenantPaymentProviders.some((p) => p.capability === "CARD");
+  if (!hasCardProcessor) {
+    return NextResponse.json(
+      {
+        error: {
+          type: "tenant_error",
+          message: "Tenant has no active card processor — cannot accept payments yet",
+        },
+      },
+      { status: 402, headers: PUBLIC_API_CORS_HEADERS }
+    );
+  }
+
+  // 5) Spawn an ephemeral single-use payment link carrying the partner's
+  // webhook config. maxUses=1 + apiGenerated=true hide it from the portal
+  // list and prevent re-use after this one invoice is fulfilled.
+  const link = await createPaymentLink({
+    supplierTenantId: tenantId,
+    nickname: description ? description.slice(0, 120) : `API payment ${new Date().toISOString()}`,
+    mode: "one_time",
+    unitAmountCents: amount,
+    currency,
+    qtyLocked: true,
+    qtyDefault: 1,
+    qtyMin: 1,
+    qtyMax: 1,
+    maxUses: 1,
+    partnerRef: typeof metadata.order_id === "string" ? metadata.order_id.slice(0, 120) : null,
+    descriptionOverride: description,
+    requireName: false,
+    requirePhone: false,
+    requireCompany: false,
+    webhookUrl,
+    webhookSecret,
+    webhookTemplate,
+    webhookEvents,
+    webhookEnabled: !!webhookUrl,
+  });
+
+  // Tag it + backref the key that spawned it. Two-step so we don't have
+  // to widen CreatePaymentLinkInput just for this API path.
+  await prisma.supplierPaymentLink.update({
+    where: { id: link.id },
+    data: { apiGenerated: true, createdViaApiKeyId: apiKeyId },
+  });
+
+  // 6) Spin the invoice off the link, exactly like a public /l/[slug]
+  // click would. This bumps the link's currentUses to 1, which also
+  // makes it "at_capacity" for any subsequent access.
+  const invoice = await createInvoiceFromLink({
+    slug: link.shortSlug,
+    quantity: 1,
+    customer: {
+      email: customerEmail,
+      name: customerName,
+      phone: customerPhone,
+      company: customerCompany,
+    },
+    attributionOverride: typeof metadata.partner_ref === "string" ? metadata.partner_ref : null,
+  });
+
+  const origin = resolvePublicOrigin(request);
+  const checkoutUrl = `${origin}/pay/invoice/${invoice.id}`;
+  // Phase I #9 (2026-09-19): also return an embed_url pointing at the
+  // bare-bones /pay/embed page — designed to be dropped into a
+  // partner's site via <iframe src="...">. Same underlying invoice.
+  const embedUrl = `${origin}/pay/embed/${invoice.id}`;
+
+  return NextResponse.json(
+    {
+      id: invoice.id,
+      status: "created",
+      amount,
+      currency: currency.toLowerCase(),
+      checkout_url: checkoutUrl,
+      embed_url: embedUrl,
+      created_at: invoice.createdAt.toISOString(),
+    },
+    { status: 201, headers: PUBLIC_API_CORS_HEADERS }
+  );
+}
+
+// GET is not supported — returning 405 makes it clear this is a POST-only
+// endpoint, not a list endpoint.
+export async function GET() {
+  return NextResponse.json(
+    { error: { type: "invalid_request_error", message: "Method not allowed. Use POST." } },
+    { status: 405, headers: { Allow: "POST", ...PUBLIC_API_CORS_HEADERS } }
+  );
+}

@@ -1,0 +1,156 @@
+Test ID,Phase,Category,Test Name,Priority,Pre-conditions,Test Steps,Expected Result,Actual Result,Status,Tested By,Test Date,Browser/Env,Notes
+P1-S01,Phase 1,Server Smoke,Build succeeded on EC2,P0,"Phase 1 files copied to EC2; npm install ran","1. SSH/RDP to EC2 server
+2. Run: pm2 logs itap-app --lines 30 --nostream","See ""Ready in <X>ms"" line in logs. No module not found errors. No TypeScript errors.",,,,,,
+P1-S02,Phase 1,Server Smoke,App responds to root URL,P0,App running on PM2,"1. Run: curl.exe -I https://itap.zashx.com/","HTTP 200 or 307 redirect response",,,,,,
+P1-S03,Phase 1,Server Smoke,New API routes registered,P0,App running on PM2,"1. Run: curl.exe -X POST https://itap.zashx.com/api/tenants/00000000-0000-0000-0000-000000000000/uploads/presign
+2. Run: curl.exe https://itap.zashx.com/api/tenants/00000000-0000-0000-0000-000000000000/menu/template","Both return HTTP 401 Unauthorized JSON (proves routes exist, not 404)",,,,,,
+P1-S04,Phase 1,Server Smoke,Environment variables loaded,P0,App running on PM2,"1. Run: pm2 logs itap-app --lines 100 --nostream | Select-String ""S3 not configured""","No matches found (meaning S3 IS configured properly)",,,,,,
+P1-S05,Phase 1,Server Smoke,Bulk upload page accessible,P0,Logged in as POS_ADMIN+,"1. Navigate to https://itap.zashx.com/dashboard/admin/menu/bulk-upload","Page loads with ""Bulk Menu Upload"" heading and 3-step wizard visible",,,,,,
+P1-DB01,Phase 1,Database,All 11 new tables exist,P0,Phase 1a SQL migration applied,"Run in DB client:
+SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('floor_plans','floor_plan_versions','sections','guest_profiles','reservations','waitlist_entries','section_templates','server_section_assignments','special_dates','guest_arrival_events','uploaded_files') ORDER BY tablename;","Returns exactly 11 rows",,,,,,
+P1-DB02,Phase 1,Database,Tables table extended with floor plan columns,P0,Phase 1a SQL migration applied,"Run:
+SELECT column_name FROM information_schema.columns WHERE table_name='tables' AND column_name IN ('floor_plan_id','section_id','shape','x','y','rotation','min_party_size','is_bookable');","Returns 8 rows",,,,,,
+P1-DB03,Phase 1,Database,All 5 enums exist,P0,Phase 1a SQL migration applied,"Run:
+SELECT typname FROM pg_type WHERE typname IN ('table_shape','reservation_status','reservation_source','waitlist_status','arrival_source');","Returns 5 rows",,,,,,
+P1-DB04,Phase 1,Database,Tenant isolation trigger active,P0,Phase 1a SQL migration applied,"Run:
+INSERT INTO uploaded_files (tenant_id, s3_bucket, s3_key, filename, mime_type, size_bytes, resource_type)
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'itap-pos-uploads-235494782307-us-east-1-an', 'wrong-prefix/test.jpg', 'test.jpg', 'image/jpeg', 1000, 'product');","ERROR: ""S3 key wrong-prefix/test.jpg must start with tenant_id aaaaaaaa-...""",,,,,,
+P1-DB05,Phase 1,Database,Updated-at triggers fire on update,P1,Phase 1a SQL migration applied,"1. Insert a test floor plan
+2. UPDATE its name
+3. SELECT updated_at","updated_at value changes to current timestamp",,,,,,
+P1-S301,Phase 1,S3 Connectivity,AWS CLI direct upload,P0,IAM credentials saved locally; AWS CLI installed,"1. echo ""test"" > test.txt
+2. aws s3 cp test.txt s3://itap-pos-uploads-235494782307-us-east-1-an/system/test.txt
+3. aws s3 ls s3://itap-pos-uploads-235494782307-us-east-1-an/system/
+4. aws s3 rm s3://itap-pos-uploads-235494782307-us-east-1-an/system/test.txt","All 3 commands succeed. Upload, list, delete all work.",,,,,,
+P1-S302,Phase 1,S3 Connectivity,Presigned URL endpoint generates valid URL,P0,Auth session active,"1. Open browser DevTools Network tab
+2. Navigate to bulk-upload page
+3. Click Download Template
+4. Look for any presign API calls in network","If any presign calls fire, they return 200 with uploadUrl, uploadHeaders, publicUrl fields",,,,,,
+P1-S303,Phase 1,S3 Connectivity,CORS allows browser uploads from app domain,P0,S3 CORS configured,"1. From browser DevTools console on itap.zashx.com:
+fetch('https://itap-pos-uploads-235494782307-us-east-1-an.s3.us-east-1.amazonaws.com/', {method:'GET'})","No CORS error in console (may be 403 Access Denied which is fine — proves CORS preflight passed)",,,,,,
+P1-CSV01,Phase 1,CSV Upload UI,Bulk upload entry point visible on Products page,P1,Logged in as admin,"1. Navigate to /dashboard/admin/menu/products
+2. Look at top-right action buttons","Two buttons visible: ""Bulk Upload"" (outline) and ""Add Product"" (filled)",,,,,,
+P1-CSV02,Phase 1,CSV Upload UI,Empty state offers bulk upload,P2,Test tenant with zero products,"1. Navigate to /dashboard/admin/menu/products with no products in DB
+2. Observe empty state message","Empty state shows ""Add Product"" + ""Or bulk upload via CSV"" buttons",,,,,,
+P1-CSV03,Phase 1,CSV Upload UI,Wizard renders all 3 steps,P0,Logged in as admin,"1. Navigate to /dashboard/admin/menu/bulk-upload","See: progress dots (1.CSV, 2.Images, 3.Review, Done) + ""Pick your CSV"" centered with Download Template + Choose CSV file buttons",,,,,,
+P1-CSV04,Phase 1,CSV Upload UI,Template downloads correctly,P0,On bulk upload page,"1. Click ""Download Template"" button","File menu-template.csv downloads. Open in spreadsheet. Has columns: name, category, price, sku, description, cost, prep_time_mins, image_filename, is_active, sort_order. Has 2 example rows (Classic Burger, Veggie Wrap).",,,,,,
+P1-CSV05,Phase 1,CSV Upload UI,Valid CSV parses and previews,P0,Template downloaded,"1. Edit template with 3-5 test products
+2. Save as CSV (UTF-8)
+3. On wizard click ""Choose CSV file""
+4. Pick your CSV","Preview shows: total rows count, valid rows count, distinct categories, error rows. Wizard auto-advances to step 2 (or step 3 if no image_filename values).",,,,,,
+P1-CSV06,Phase 1,CSV Upload UI,Invalid CSV shows row-level errors,P1,Bulk upload page open,"1. Create CSV with bad data:
+   - Row missing required ""name"" field
+   - Row with non-numeric price like ""free""
+2. Upload it","Wizard shows error summary with specific rows and field names. Bad rows skipped from valid list.",,,,,,
+P1-CSV07,Phase 1,CSV Upload UI,Image folder picker matches filenames,P0,Test CSV with image_filename column,"1. Save 2 JPG/PNG images named to match your CSV (e.g. burger.jpg, pizza.jpg) in a single folder
+2. In wizard step 2 click ""Choose folder""
+3. Select that folder in the file picker","See ""Found N/N images matched ✓"" with green check. If any missing, shown in expandable warning list.",,,,,,
+P1-CSV08,Phase 1,CSV Upload UI,Missing images warning,P1,Test CSV references image_filename values,"1. Pick a folder that doesn't contain ALL referenced images
+2. Observe warning","Shows ""⚠ N missing"" expandable list with the specific filenames not found",,,,,,
+P1-CSV09,Phase 1,CSV Upload UI,Review step shows preview table,P0,Past CSV + image picker steps,"1. Click ""Continue to Review""","See stats grid (Total rows, Valid rows, Errors, Categories) + preview table (first 10 rows) showing name, category, price, image match status (✓ or ✗)",,,,,,
+P1-CSV10,Phase 1,CSV Upload UI,Bulk create completes successfully,P0,Reviewed valid CSV + matching images,"1. On Review step click ""Create N products""
+2. Watch progress bar","Progress bar fills as images upload. Final screen: ""Menu upload complete! Created N products"". Lists any new categories auto-created.",,,,,,
+P1-CSV11,Phase 1,Data Integrity,Created products appear in Products list,P0,Just completed bulk upload,"1. Navigate to /dashboard/admin/menu/products","All uploaded products appear in list with name, category, price, status (Available)",,,,,,
+P1-CSV12,Phase 1,Data Integrity,Product images load from S3,P0,Just completed bulk upload,"1. On Products page locate a product with an uploaded image
+2. Verify thumbnail loads","Image displays. Right-click image > Inspect — src starts with https://itap-pos-uploads-... or your CDN URL.",,,,,,
+P1-CSV13,Phase 1,Data Integrity,Categories auto-created in DB,P1,CSV had at least one new category name,"Run in DB:
+SELECT name, sort_order FROM categories WHERE created_at > NOW() - INTERVAL '1 hour';","See the new categories with auto-assigned sort_order",,,,,,
+P1-CSV14,Phase 1,Data Integrity,Uploaded files tracked with COMPLETED status,P1,Just completed bulk upload,"Run in DB:
+SELECT filename, s3_key, upload_status, size_bytes, uploaded_at FROM uploaded_files WHERE created_at > NOW() - INTERVAL '1 hour' ORDER BY created_at DESC;","All uploaded files have upload_status='COMPLETED' and uploaded_at populated",,,,,,
+P1-CSV15,Phase 1,Data Integrity,Duplicate SKU handling,P1,Already created products with known SKUs,"1. Upload CSV containing an SKU that already exists in DB
+2. Watch result","Wizard final screen shows ""Skipped X (duplicate SKUs)"" with the duplicate SKU listed in errors",,,,,,
+P1-SEC01,Phase 1,Security,Unauth user blocked from upload page,P1,Use incognito browser (not logged in),"1. Open https://itap.zashx.com/dashboard/admin/menu/bulk-upload in incognito","Redirected to login page (no admin access)",,,,,,
+P1-SEC02,Phase 1,Security,Presign API rejects non-admin role,P1,Logged in as POS_STAFF role (not admin),"1. Try to manually POST to /api/tenants/<id>/uploads/presign with curl using POS_STAFF cookie","Returns 403 Forbidden",,,,,,
+P1-SEC03,Phase 1,Security,Non-image MIME types rejected,P2,Auth as admin,"1. Try presign with contentType: ""application/pdf""","Returns 415 Unsupported Media Type",,,,,,
+P1-SEC04,Phase 1,Security,Oversized file rejected,P2,Auth as admin,"1. Try presign with size: 50000000 (50MB)","Returns 413 Payload Too Large (default max is 10MB)",,,,,,
+P1-SEC05,Phase 1,Security,Cross-tenant S3 key injection blocked by DB trigger,P0,DB access,"Run in DB (use any valid tenant_id):
+INSERT INTO uploaded_files (tenant_id, s3_bucket, s3_key, filename, mime_type, size_bytes, resource_type)
+VALUES ('<tenant-A-uuid>', 'itap-pos-uploads-235494782307-us-east-1-an', '<tenant-B-uuid>/product/sneaky.jpg', 'x.jpg', 'image/jpeg', 1, 'product');","ERROR: trigger rejects the insert with isolation message",,,,,,
+P2-01,Phase 2,Navigation,Sidebar shows Floor Plan link,P0,Phase 2 deployed; logged in as admin,"1. Open admin dashboard
+2. Click ""Tables"" in left sidebar to expand","Submenu appears with ""Tables list"" and ""Floor plan"" items",,,,,,
+P2-02,Phase 2,Navigation,Floor plan page loads,P0,Sidebar expanded,"1. Click ""Floor plan"" in sidebar","Navigates to /dashboard/admin/floor-plan. Page header ""Floor Plan"" with subtitle visible.",,,,,,
+P2-03,Phase 2,Empty State,No floor plans shows empty state CTA,P1,Fresh tenant with zero floor plans,"1. Open /dashboard/admin/floor-plan","Shows large layers icon + ""No floor plans yet"" message + ""Create floor plan"" button",,,,,,
+P2-04,Phase 2,Floor Creation,Create first floor plan,P0,On empty floor plan page,"1. Click ""Create floor plan""
+2. Browser prompt asks for name
+3. Type ""Main Dining""
+4. Click OK","Tab ""Main Dining"" appears at top. Empty white canvas (1200x800) with faint grid. Left palette shows 5 shape buttons. Right shows inspector empty state.",,,,,,
+P2-05,Phase 2,Add Tables,Add Round table,P0,Floor plan open,"1. Click ""Round"" button in left palette","New round table appears near canvas center labeled ""1"" + ""4 seats"". Auto-selected (indigo border). Inspector populates with its props. ""Unsaved changes"" amber pill appears.",,,,,,
+P2-06,Phase 2,Add Tables,Add Square table,P1,Floor plan open,"1. Click ""Square"" button","New square table appears auto-numbered ""2""",,,,,,
+P2-07,Phase 2,Add Tables,Add Rectangle table,P1,Floor plan open,"1. Click ""Rectangle"" button","New rectangle table (wider than tall) appears auto-numbered ""3""",,,,,,
+P2-08,Phase 2,Add Tables,Add Booth,P1,Floor plan open,"1. Click ""Booth"" button","New rounded-corner rectangle (booth shape) appears auto-numbered ""4""",,,,,,
+P2-09,Phase 2,Add Tables,Add Bar,P1,Floor plan open,"1. Click ""Bar"" button","New long thin rectangle appears auto-numbered ""5""",,,,,,
+P2-10,Phase 2,Drag,Drag a table to new position,P0,At least one table on canvas,"1. Click a table
+2. Hold mouse down and drag to new location
+3. Release","Table follows cursor smoothly. Drops at release position. ""Unsaved changes"" pill visible.",,,,,,
+P2-11,Phase 2,Selection,Click empty canvas deselects,P1,Table selected,"1. Click on empty area of canvas (not on a table)","Selected table loses indigo border. Inspector shows empty state.",,,,,,
+P2-12,Phase 2,Edit Properties,Edit table number,P0,Table selected,"1. In inspector change ""Table number"" field from ""1"" to ""VIP-1""
+2. Tab out or click elsewhere","Table label on canvas updates to ""VIP-1"" immediately. Inspector shows ""Modified"" blue pill.",,,,,,
+P2-13,Phase 2,Edit Properties,Change shape via inspector,P0,Table selected,"1. In inspector ""Shape"" dropdown change from Round to Booth","Table on canvas re-renders as rounded rectangle (booth shape) immediately",,,,,,
+P2-14,Phase 2,Edit Properties,Change capacity,P1,Table selected,"1. Change ""Capacity"" from 4 to 8","Label on table updates to show ""8 seats""",,,,,,
+P2-15,Phase 2,Edit Properties,Change min/max party size,P2,Table selected,"1. Change Min party to 2
+2. Change Max party to 8","Values accepted. Persists on save.",,,,,,
+P2-16,Phase 2,Edit Properties,Edit width and height,P2,Table selected,"1. Change Width from 80 to 120
+2. Change Height from 80 to 100","Table on canvas resizes immediately",,,,,,
+P2-17,Phase 2,Edit Properties,Toggle bookable off,P2,Table selected,"1. Uncheck ""Available for reservations""","Checkbox state changes. Will persist on save.",,,,,,
+P2-18,Phase 2,Sections,Open section management modal,P0,Floor plan open,"1. Click ""New section"" button in left toolbar","Modal opens with name input + 8 color circles + ""Add section"" button",,,,,,
+P2-19,Phase 2,Sections,Create section with custom color,P0,Section modal open,"1. Type ""Bar Area""
+2. Click orange color circle
+3. Click ""Add section""","Section ""Bar Area"" appears in list below form with orange swatch",,,,,,
+P2-20,Phase 2,Sections,Create multiple sections,P1,Section modal open,"1. Add ""Patio"" with green
+2. Add ""VIP Room"" with purple","All three sections (Bar Area, Patio, VIP Room) visible in modal list",,,,,,
+P2-21,Phase 2,Sections,Assign table to section,P0,Sections exist; close modal; table selected,"1. In inspector ""Section"" dropdown choose ""Bar Area""","Table fill color changes to orange on canvas. ""Modified"" pill on inspector.",,,,,,
+P2-22,Phase 2,Sections,Multiple tables in different sections,P1,3+ sections exist,"1. Assign table 1 to Bar Area (orange)
+2. Assign table 2 to Patio (green)
+3. Assign table 3 to VIP Room (purple)","Each table fills with its section's color. Visually distinct.",,,,,,
+P2-23,Phase 2,Sections,Delete a section,P1,Section exists with assigned tables,"1. Open section modal
+2. Click trash icon next to a section
+3. Confirm","Section deleted. Tables previously in it become unassigned (fill returns to neutral grey).",,,,,,
+P2-24,Phase 2,Save,Save draft button,P0,Made changes (unsaved pill visible),"1. Click ""Save draft"" button (top right)","Button shows ""Saving..."" briefly. Green toast: ""Draft saved"". ""Unsaved changes"" pill disappears.",,,,,,
+P2-25,Phase 2,Persistence,Tables persist after browser refresh,P0,Just saved draft,"1. Press Ctrl+Shift+R (hard refresh)","Page reloads. All tables, sections, positions, and edits retained.",,,,,,
+P2-26,Phase 2,Publish,Publish creates new version,P0,Floor plan saved,"1. Move a table (creates unsaved changes)
+2. Click ""Publish"" button
+3. Confirm ""Save and publish all pending changes?""","Green toast: ""Published version N"" where N is incremented (e.g. 2 if first publish)",,,,,,
+P2-27,Phase 2,Publish,Version snapshot in DB,P1,Just published,"Run in DB:
+SELECT version_number, saved_at, jsonb_array_length(layout_json->'tables') AS tables FROM floor_plan_versions WHERE floor_plan_id='<your-id>' ORDER BY version_number DESC LIMIT 5;","Shows version rows with correct table counts in layout JSON",,,,,,
+P2-28,Phase 2,Multi-Floor,Add second floor,P0,Floor plan with first floor exists,"1. Click ""+ Add floor"" in top tabs
+2. Type ""Patio"" in prompt","New ""Patio"" tab appears next to ""Main Dining"". Empty canvas.",,,,,,
+P2-29,Phase 2,Multi-Floor,Tables isolated per floor,P0,Two floors exist,"1. Add 2-3 tables to Patio
+2. Click ""Main Dining"" tab
+3. Verify original tables still visible
+4. Click ""Patio"" tab","Each floor maintains its own table set. Switching tabs doesn't merge data.",,,,,,
+P2-30,Phase 2,Multi-Floor,Default floor indicator,P2,Multiple floors exist,"1. Look at tab icons","Default floor has home icon. Others have layers icon.",,,,,,
+P2-31,Phase 2,Delete,Delete new (unsaved) table,P1,Just added a table (not saved yet),"1. Select new table
+2. Click trash icon in inspector","Table removed from canvas immediately. No save needed (was never in DB).",,,,,,
+P2-32,Phase 2,Delete,Delete saved table,P1,Table exists in DB (saved),"1. Select saved table
+2. Click trash icon
+3. Click ""Save draft""","Table removed from canvas. After save, soft-deleted in DB.",,,,,,
+P2-33,Phase 2,Delete,Soft delete preserves history,P1,Just soft-deleted a table,"Run in DB:
+SELECT table_number, is_active, updated_at FROM tables WHERE id='<deleted-id>';","Row still exists with is_active=false (NOT hard-deleted)",,,,,,
+P2-34,Phase 2,Permissions,POS_STAFF cannot save/publish,P2,Have POS_STAFF account,"1. Log in as POS_STAFF
+2. Visit /dashboard/admin/floor-plan
+3. Try to save changes","Page loads (view OK for MANAGER+). Save/Publish should fail with 403 for POS_STAFF.",,,,,,
+P2-35,Phase 2,Permissions,POS_MANAGER can view but not edit,P2,Have POS_MANAGER account,"1. Log in as POS_MANAGER
+2. Visit floor plan page","Can view canvas. Save/Publish should error (requires POS_ADMIN).",,,,,,
+P2-36,Phase 2,Multi-Location,Switch location in dropdown,P1,Tenant has 2+ locations,"1. In page header use Location dropdown
+2. Switch to different location","Editor reloads with that location's floor plans (different set)",,,,,,
+P2-37,Phase 2,Edge Case,Add 50+ tables performance,P3,Floor plan open,"1. Click Round button 50 times rapidly
+2. Drag a few tables around","Canvas remains responsive. No lag in dragging.",,,,,,
+P2-38,Phase 2,Edge Case,Duplicate table number rejected on save,P2,Two tables manually given same number,"1. Edit two tables to have same table number e.g. ""1""
+2. Click ""Save draft""","Error toast: ""Duplicate tableNumber in input""",,,,,,
+P2-39,Phase 2,Edge Case,Floor plan with no tables saves successfully,P2,New empty floor plan,"1. Don't add any tables
+2. Click ""Save draft""","Save succeeds. No error.",,,,,,
+P2-40,Phase 2,Edge Case,Long table number accepted,P3,Floor plan open,"1. Add a table
+2. Set table number to ""Patio-VIP-A-12""","Accepts up to 20 chars. Saves and displays correctly.",,,,,,
+INSTR-01,Instructions,READ FIRST,How to use this test plan,N/A,N/A,"COLUMN GUIDE:
+- Test ID: Unique identifier
+- Phase: Which feature group
+- Priority: P0=Critical (blocker if fails), P1=High, P2=Medium, P3=Low
+- Pre-conditions: What must be true before starting
+- Test Steps: Action by action
+- Expected Result: What should happen
+- Actual Result: WHAT YOU SAW (fill in)
+- Status: Pass / Fail / Blocked (fill in)
+- Tested By: Your name (fill in)
+- Test Date: YYYY-MM-DD (fill in)
+- Browser/Env: Chrome 130, Firefox 132, Safari 17 etc (fill in)
+- Notes: Findings, edge cases observed, screenshots references (fill in)","Tester reads, fills in last 5 columns",,,,,,
