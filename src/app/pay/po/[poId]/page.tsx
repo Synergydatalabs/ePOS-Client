@@ -236,14 +236,15 @@ function PayPoPageInner({
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Branded hero band — supplier primary colour as the backdrop so the
-           page feels merchant-fronted. Keeps consistent height whether or
-           not a logo is provided. */}
+           page feels merchant-fronted. Height is tight so the amount card
+           sits cleanly BELOW it without a visual clash. */}
       <header
-        className="relative pt-10 pb-24 px-4"
+        className="relative pt-12 pb-10 px-4"
         style={{
-          background: `linear-gradient(135deg, ${primary} 0%, ${primary}EE 60%, ${primary}CC 100%)`,
+          background: `linear-gradient(135deg, ${primary} 0%, ${primary}EE 50%, ${accent} 100%)`,
         }}
       >
+        {/* Subtle dot pattern + soft glow for depth */}
         <div
           className="absolute inset-0 opacity-10 pointer-events-none"
           style={{
@@ -252,45 +253,91 @@ function PayPoPageInner({
             backgroundSize: "24px 24px",
           }}
         />
+        <div
+          className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full blur-3xl opacity-25 pointer-events-none"
+          style={{ background: accent }}
+        />
         <div className="relative max-w-md mx-auto text-center">
-          {/* Logo tile — real image if the supplier provided one, otherwise
-               a tasteful initials-in-circle fallback that uses the accent
-               colour so it never looks like a bug. */}
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg mb-4 overflow-hidden">
-            {po.brand.logoUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={po.brand.logoUrl}
-                alt={po.supplierName}
-                className="w-full h-full object-contain p-2"
-                onError={(e) => {
-                  // On image load error, swap to the initials fallback
-                  const el = e.currentTarget as HTMLImageElement;
-                  el.style.display = "none";
-                  if (el.nextElementSibling) {
-                    (el.nextElementSibling as HTMLElement).style.display = "flex";
-                  }
-                }}
+          {/* Premium logo tile — real image if the supplier provided one,
+               otherwise a layered monogram with gradient + soft inner ring
+               + decorative sparkle so the fallback looks designed rather
+               than placeholder-y. */}
+          <div className="inline-flex items-center justify-center mb-5">
+            <div className="relative">
+              {/* soft outer glow */}
+              <div
+                className="absolute inset-0 rounded-3xl blur-xl opacity-50"
+                style={{ background: accent }}
               />
-            ) : null}
-            <div
-              className={`w-full h-full ${po.brand.logoUrl ? "hidden" : "flex"} items-center justify-center text-xl font-extrabold text-white`}
-              style={{
-                background: `linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`,
-              }}
-            >
-              {initials}
+              <div
+                className="relative w-20 h-20 rounded-3xl bg-white shadow-2xl overflow-hidden ring-4 ring-white/30"
+              >
+                {po.brand.logoUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={po.brand.logoUrl}
+                    alt={po.supplierName}
+                    className="w-full h-full object-contain p-2.5"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      if (el.nextElementSibling) {
+                        (el.nextElementSibling as HTMLElement).style.display = "flex";
+                      }
+                    }}
+                  />
+                ) : null}
+                <div
+                  className={`w-full h-full ${po.brand.logoUrl ? "hidden" : "flex"} items-center justify-center relative`}
+                  style={{
+                    background: `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)`,
+                  }}
+                >
+                  {/* inner shine */}
+                  <div
+                    className="absolute inset-0 opacity-30"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.6) 0%, transparent 55%)",
+                    }}
+                  />
+                  <span
+                    className="relative text-2xl font-extrabold text-white tracking-wider"
+                    style={{
+                      fontFamily:
+                        "'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif",
+                      letterSpacing: "0.05em",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                    }}
+                  >
+                    {initials}
+                  </span>
+                  {/* corner sparkle */}
+                  <svg
+                    className="absolute top-1.5 right-1.5 w-3 h-3 text-white/70"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 0l1.5 8.5L22 10l-8.5 1.5L12 20l-1.5-8.5L2 10l8.5-1.5z" />
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">Pay {po.supplierName}</h1>
-          <p className="text-sm text-white/70 mt-1 font-mono">PO {po.poNumber}</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Pay {po.supplierName}
+          </h1>
+          <p className="text-xs text-white/70 mt-1.5 font-mono uppercase tracking-wider">
+            PO {po.poNumber}
+          </p>
         </div>
       </header>
 
-      {/* Body — pulled up to overlap the hero's bottom edge for depth. */}
-      <main className="max-w-md mx-auto px-4 -mt-16 pb-10">
+      {/* Body — sits cleanly below the hero. relative + z-10 so no
+           stacking-context surprise. */}
+      <main className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-10">
         {/* Amount card */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 p-6 mb-4 border border-slate-100">
           <div className="text-center">
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold mb-1">
               Amount due
