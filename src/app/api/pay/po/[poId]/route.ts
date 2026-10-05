@@ -42,6 +42,13 @@ export async function GET(
           select: {
             name: true,
             supplierProfile: { select: { displayName: true } },
+            settings: {
+              select: {
+                brandLogoUrl: true,
+                brandPrimaryColor: true,
+                brandAccentColor: true,
+              },
+            },
           },
         },
       },
@@ -65,6 +72,14 @@ export async function GET(
         expired,
         supplierName:
           po.supplierTenant.supplierProfile?.displayName || po.supplierTenant.name,
+        // 2026-10-04: brand surface for a nicer checkout header. Nullable
+        // fields fall back to tasteful defaults in the UI (initials-in-circle
+        // for missing logo, slate-900 for missing primary colour).
+        brand: {
+          logoUrl: po.supplierTenant.settings?.brandLogoUrl ?? null,
+          primaryColor: po.supplierTenant.settings?.brandPrimaryColor ?? null,
+          accentColor: po.supplierTenant.settings?.brandAccentColor ?? null,
+        },
       },
     });
   } catch (error: any) {
