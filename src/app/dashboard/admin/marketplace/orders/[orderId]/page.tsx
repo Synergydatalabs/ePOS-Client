@@ -420,7 +420,7 @@ export default function MerchantOrderDetailPage({
                 a payment link exists and PO isn't yet paid. Shows QR + copy
                 link + open button. Merchants can share the same link/QR to
                 whoever pays on their side (AP, owner, etc.). */}
-            <PaymentCard order={order} money={money} />
+            <PaymentCard order={order} money={money} tenantId={tenantId} onRegenerated={load} />
 
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -721,9 +721,13 @@ export default function MerchantOrderDetailPage({
 function PaymentCard({
   order,
   money,
+  tenantId,
+  onRegenerated,
 }: {
   order: Order;
   money: (cents: number) => string;
+  tenantId: string | null;
+  onRegenerated: () => void;
 }) {
   const style = PAYMENT_STATUS_STYLES[order.paymentStatus];
   const linkExpired =
@@ -785,7 +789,12 @@ function PaymentCard({
           We couldn't generate a payment link for this PO. Contact the supplier
           to arrange payment off-platform (bank transfer, cheque, etc.).
         </p>
-        <details className="text-xs text-gray-500">
+        <RegeneratePaymentLinkButton
+          tenantId={tenantId}
+          orderId={order.id}
+          onDone={onRegenerated}
+        />
+        <details className="text-xs text-gray-500 mt-3">
           <summary className="cursor-pointer">Technical details</summary>
           <p className="mt-1 font-mono whitespace-pre-wrap">{order.paymentLinkFailureNote}</p>
         </details>
@@ -801,10 +810,15 @@ function PaymentCard({
           <Icon icon="solar:wallet-linear" className="w-5 h-5 text-gray-500" />
           <h3 className="font-semibold text-gray-900">Off-platform payment</h3>
         </div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 mb-3">
           This supplier hasn't set up card payments through iTap yet. Pay them
           directly via bank transfer, cheque, or your usual channel.
         </p>
+        <RegeneratePaymentLinkButton
+          tenantId={tenantId}
+          orderId={order.id}
+          onDone={onRegenerated}
+        />
       </div>
     );
   }
@@ -817,9 +831,14 @@ function PaymentCard({
           <Icon icon="solar:clock-circle-linear" className="w-5 h-5 text-amber-600" />
           <h3 className="font-semibold text-gray-900">Payment link expired</h3>
         </div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 mb-3">
           Ask the supplier to regenerate the payment link, or pay off-platform.
         </p>
+        <RegeneratePaymentLinkButton
+          tenantId={tenantId}
+          orderId={order.id}
+          onDone={onRegenerated}
+        />
       </div>
     );
   }
@@ -884,5 +903,54 @@ function PaymentCard({
         </p>
       )}
     </div>
+  );
+}
+
+// ---------- Regenerate payment link button ----------
+// Shown when a PO has no live link (never generated, previously failed, or
+// expired). POSTs to the regenerate endpoint which re-runs the same
+// link-generation logic the PO-submit path uses — picking up any provider
+// the supplier assigned AFTER the PO landed.
+
+function RegeneratePaymentLinkButton({
+  tenantId,
+  orderId,
+  onDone,
+}: {
+  tenantId: string | null;
+  orderId: string;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const regenerate = async () => {
+    if (!tenantId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${tenantId}/marketplace/orders/${orderId}/regenerate-payment-link`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast.success(`Payment link regenerated (${data.processor})`);
+      onDone();
+    } catch (e) {
+      toast.error((e as Error).message || "Regenerate failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={regenerate}
+      disabled={busy || !tenantId}
+      className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-900 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <Icon icon="solar:refresh-linear" className="w-3.5 h-3.5" />
+      {busy ? "Regenerating…" : "Regenerate payment link"}
+    </button>
   );
 }

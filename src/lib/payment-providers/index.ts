@@ -84,8 +84,8 @@ export interface PaymentProviderClient {
  */
 export function getProvider(processor: PaymentProcessor): PaymentProviderClient {
   switch (processor) {
-    // case "GP":
-    //   return new GpProvider();
+    case "GP":
+      return new GpProvider();
     case "MONERIS":
       return new MonerisCheckoutProvider();
     // case "STRIPE":

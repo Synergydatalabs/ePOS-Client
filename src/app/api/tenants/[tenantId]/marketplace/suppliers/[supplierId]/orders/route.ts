@@ -411,22 +411,38 @@ export async function POST(
     // "Pay with card" immediately. On any failure, log the reason to the
     // PO row and continue — PO creation MUST NOT fail because payment link
     // generation blipped (off-platform payment is still a valid path).
-    // Phase 2b (2026-08): SupplierProcessor was renamed to
-    // TenantPaymentProvider and gained a `capability` column. Suppliers
-    // only ever fill the CARD slot today, so scope explicitly.
-    const activeProcessor = await prisma.tenantPaymentProvider.findFirst({
-      where: {
-        tenantId: supplierId,
-        capability: "CARD",
-        status: "ACTIVE",
-      },
-      select: {
-        id: true,
-        processor: true,
-        externalMid: true,
-        credentialsEnc: true,
-      },
-    });
+    //
+    // 2026-10-04: ECOMMERCE is the semantically correct capability for a
+    // hosted PO pay page (card-not-present). We look for ECOMMERCE first;
+    // fall back to CARD for legacy suppliers who only ever filled the CARD
+    // slot (that was the only option before the ECOMMERCE enum shipped).
+    const activeProcessor =
+      (await prisma.tenantPaymentProvider.findFirst({
+        where: {
+          tenantId: supplierId,
+          capability: "ECOMMERCE",
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          processor: true,
+          externalMid: true,
+          credentialsEnc: true,
+        },
+      })) ??
+      (await prisma.tenantPaymentProvider.findFirst({
+        where: {
+          tenantId: supplierId,
+          capability: "CARD",
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          processor: true,
+          externalMid: true,
+          credentialsEnc: true,
+        },
+      }));
 
     if (activeProcessor) {
       try {
