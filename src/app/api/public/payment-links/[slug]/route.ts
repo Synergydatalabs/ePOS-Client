@@ -125,6 +125,10 @@ export async function GET(
         // (header, footer, "sold on hub by MEGO" caption, T&C footer
         // text) by turning off tenant_settings.powered_by_visible.
         poweredByVisible: link.supplier?.settings?.poweredByVisible ?? true,
+        // 2026-10-06: per-tenant preferred payment method. Drives the
+        // Stripe PaymentElement accordion order on the pay page — the
+        // method named here expands first; everything else collapses.
+        preferredPaymentMethod: link.supplier?.settings?.preferredPaymentMethod ?? null,
       },
       // For Elements upfront-mount on the checkout page. Null = supplier
       // has no Stripe → checkout falls back to redirect / mock-pay.

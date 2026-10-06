@@ -586,6 +586,13 @@ model TenantSettings {
   iframeEnabled        Boolean @default(true) @map("iframe_enabled")
   customDomain         String? @unique @map("custom_domain") @db.VarChar(255)
 
+  // 2026-10-06: per-tenant preferred payment method on hosted /l/[slug]
+  // checkout. When set, the Stripe PaymentElement renders this method
+  // first (expanded accordion item) and collapses the rest. Null = use
+  // Stripe's default ordering. Values: "upi" | "card" (free-text to keep
+  // the door open for apple_pay / google_pay / etc without a migration).
+  preferredPaymentMethod String? @map("preferred_payment_method") @db.VarChar(20)
+
   // Salon/Appointment settings
   appointmentBookingEnabled Boolean @default(false) @map("appointment_booking_enabled")
   bufferTimeMinutes         Int     @default(15) @map("buffer_time_minutes")

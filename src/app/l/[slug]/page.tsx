@@ -108,6 +108,9 @@ interface LinkData {
     // "Sold on hub by MEGO" caption, midnight MEGO footer, and the
     // "processed by MEGO" line in the T&C row.
     poweredByVisible?: boolean;
+    // 2026-10-06: per-tenant preferred payment method on the Stripe
+    // PaymentElement. "upi" / "card" / null. Null = Stripe default order.
+    preferredPaymentMethod?: string | null;
   };
   // Phase I #2e: supplier's Stripe publishable key. Null when the supplier
   // has no Stripe processor — checkout falls back to the redirect flow.
@@ -949,6 +952,7 @@ export default function PaymentLinkCheckout() {
               publishableKey={data.stripePublishableKey}
               amountCents={total}
               currency={data.link.currency}
+              preferredPaymentMethod={data.merchant.preferredPaymentMethod ?? null}
               buildBody={() => buildCheckoutBody()}
               allInputsValid={
                 !submitting &&
@@ -1096,6 +1100,10 @@ interface CheckoutFormProps {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  // 2026-10-06: when set, this method expands first in the Stripe
+  // PaymentElement accordion and the rest collapse. Per-tenant
+  // (tenant_settings.preferred_payment_method). "upi" / "card" / null.
+  preferredPaymentMethod?: string | null;
 }
 
 function CheckoutForm(props: CheckoutFormProps) {
@@ -1119,6 +1127,14 @@ function CheckoutForm(props: CheckoutFormProps) {
       // which handles PM creation automatically — the default (no
       // `paymentMethodCreation` field) is correct for this flow AND does
       // not restrict wallet visibility.
+      //
+      // 2026-10-06: paymentMethodOrder puts the tenant's preferred
+      // method first in the accordion (expanded by default). The rest
+      // keep Stripe's natural ordering below it. Null preference → omit
+      // the field and let Stripe pick (default behaviour).
+      ...(props.preferredPaymentMethod
+        ? { paymentMethodOrder: [props.preferredPaymentMethod] }
+        : {}),
       appearance: {
         theme: "stripe" as const,
         variables: {
@@ -1127,7 +1143,7 @@ function CheckoutForm(props: CheckoutFormProps) {
         },
       },
     }),
-    [props.amountCents, props.currency]
+    [props.amountCents, props.currency, props.preferredPaymentMethod]
   );
 
   // Pass our already-collected billing details as defaults so Stripe's

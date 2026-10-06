@@ -548,6 +548,9 @@ export async function resolveLinkBySlug(slug: string) {
               // powered_by_visible flag to hide MEGO chrome on the
               // /l/[slug] checkout page when the supplier has opted out.
               poweredByVisible: true,
+              // 2026-10-06: per-tenant preferred payment method
+              // (reorders the Stripe PaymentElement accordion).
+              preferredPaymentMethod: true,
             },
           },
         },
