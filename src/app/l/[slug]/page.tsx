@@ -1127,14 +1127,6 @@ function CheckoutForm(props: CheckoutFormProps) {
       // which handles PM creation automatically — the default (no
       // `paymentMethodCreation` field) is correct for this flow AND does
       // not restrict wallet visibility.
-      //
-      // 2026-10-06: paymentMethodOrder puts the tenant's preferred
-      // method first in the accordion (expanded by default). The rest
-      // keep Stripe's natural ordering below it. Null preference → omit
-      // the field and let Stripe pick (default behaviour).
-      ...(props.preferredPaymentMethod
-        ? { paymentMethodOrder: [props.preferredPaymentMethod] }
-        : {}),
       appearance: {
         theme: "stripe" as const,
         variables: {
@@ -1143,7 +1135,7 @@ function CheckoutForm(props: CheckoutFormProps) {
         },
       },
     }),
-    [props.amountCents, props.currency, props.preferredPaymentMethod]
+    [props.amountCents, props.currency]
   );
 
   // Pass our already-collected billing details as defaults so Stripe's
@@ -1152,6 +1144,16 @@ function CheckoutForm(props: CheckoutFormProps) {
   // re-ask the customer for them.
   const paymentElementOptions = useMemo(
     () => ({
+      // 2026-10-06: paymentMethodOrder puts the tenant's preferred
+      // method first in the PaymentElement tabs/accordion. The named
+      // method becomes the selected/expanded one on load; the rest
+      // follow in Stripe's natural order. Null → Stripe default.
+      // IMPORTANT: paymentMethodOrder belongs on the PaymentElement
+      // options (not on the Elements provider options) — Stripe
+      // silently ignores it on the outer options object.
+      ...(props.preferredPaymentMethod
+        ? { paymentMethodOrder: [props.preferredPaymentMethod] }
+        : {}),
       fields: {
         billingDetails: {
           name: "never" as const,
@@ -1186,7 +1188,7 @@ function CheckoutForm(props: CheckoutFormProps) {
         },
       },
     }),
-    [props.customerName, props.customerEmail, props.customerPhone]
+    [props.customerName, props.customerEmail, props.customerPhone, props.preferredPaymentMethod]
   );
 
   return (
