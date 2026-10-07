@@ -1723,38 +1723,13 @@ function Shell({
       </header>
       )}
 
-      {/* Neutral header for suppliers who opted out of MEGO chrome — shows
-           their own name + logo so the page doesn't feel headerless. */}
-      {!showPlatformChrome && merchantName && (
-        <header
-          className="border-b"
-          style={{ background: "#FFFFFF", borderColor: "#E1E4EE" }}
-        >
-          <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-            {logoUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoUrl}
-                alt={merchantName}
-                style={{ height: 32, width: "auto" }}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            )}
-            <div
-              style={{
-                fontFamily: "'Inter Tight', Inter, system-ui, sans-serif",
-                fontWeight: 700,
-                fontSize: 18,
-                color: MEGO_INK,
-              }}
-            >
-              {merchantName}
-            </div>
-          </div>
-        </header>
-      )}
+      {/* 2026-10-07: when the supplier has opted out of MEGO chrome
+           (powered_by_visible = false) we render NO header — just the
+           clean checkout card centered on the page. The merchant name
+           still appears inside the card (on the Pay button, in the
+           total line, on the T&C row), so hiding this strip loses
+           nothing. If the supplier wants a logo visible, we'll move
+           it inside the card instead of back at the top. */}
 
       <main className="flex-1 py-8 px-4">
         <div className="max-w-2xl mx-auto">{children}</div>
