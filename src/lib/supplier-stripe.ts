@@ -185,3 +185,35 @@ export async function updateInvoicePaymentIntentAmount(args: {
   });
   return { id: updated.id };
 }
+
+/**
+ * 2026-10-07 — cancel an in-flight PaymentIntent when the customer
+ * abandons the pay page (closes the tab, hits Back, etc).
+ *
+ * Why: without this, abandoned PIs sit as "Incomplete" in the Stripe
+ * dashboard for 24h (until Stripe auto-cancels them). Clients see
+ * noise from test opens that look like real failed charges.
+ *
+ * Fires with cancellation_reason: "abandoned" so the dashboard shows
+ * the real cause. Idempotent — if the PI is already in a terminal
+ * state (succeeded, already canceled), Stripe returns an error we
+ * swallow silently; the caller doesn't care, we just want best-effort
+ * cleanup.
+ */
+export async function cancelInvoicePaymentIntent(args: {
+  supplierTenantId: string;
+  paymentIntentId: string;
+}): Promise<{ canceled: boolean }> {
+  try {
+    const credentials = await loadActiveSupplierStripe(args.supplierTenantId);
+    if (!credentials) return { canceled: false };
+    const stripe = buildStripeClient(credentials);
+    await stripe.paymentIntents.cancel(args.paymentIntentId, {
+      cancellation_reason: "abandoned",
+    });
+    return { canceled: true };
+  } catch {
+    // Already canceled, already succeeded, or network blip — best-effort.
+    return { canceled: false };
+  }
+}

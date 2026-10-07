@@ -17,7 +17,7 @@
 // From there the existing pay flow (processor / receipts / webhooks)
 // takes over — this page is intentionally thin.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 // Phase I #2 (2026-09-08): send a reCAPTCHA v3 token on submit so the
 // checkout POST passes the server-side verify (mirrors the invoice pay
@@ -1220,6 +1220,44 @@ function CheckoutFormInner({
   const [cardReady, setCardReady] = useState(false);
   const [walletAvailable, setWalletAvailable] = useState(false);
 
+  // 2026-10-07 — abandoned-PI cleanup.
+  //
+  // When the customer clicks Pay we create a Stripe PaymentIntent on
+  // the server (deferred-intent flow). If they close the tab or
+  // navigate away before the confirm settles — the PI stays as
+  // "Incomplete" in the merchant's Stripe dashboard for days,
+  // polluting their records with test-opens and failed cards.
+  //
+  // Hold the invoiceId of any in-flight PI in a ref so the unload
+  // handler can beacon-cancel it. Flip paidRef to true the instant a
+  // confirm succeeds so we DON'T cancel a paid PI (race safety).
+  const inFlightInvoiceIdRef = useRef<string | null>(null);
+  const paidRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    function cancelAbandonedPI() {
+      const invoiceId = inFlightInvoiceIdRef.current;
+      if (!invoiceId || paidRef.current) return;
+      try {
+        // sendBeacon survives tab close / navigation. Returns a
+        // boolean; we don't care about the response (and can't read
+        // it anyway on an unloading page).
+        navigator.sendBeacon(
+          `/api/pay/invoice/${invoiceId}/cancel-intent`,
+          new Blob([], { type: "text/plain" })
+        );
+      } catch {
+        // Nothing to do — the page is going away.
+      }
+    }
+    window.addEventListener("pagehide", cancelAbandonedPI);
+    window.addEventListener("beforeunload", cancelAbandonedPI);
+    return () => {
+      window.removeEventListener("pagehide", cancelAbandonedPI);
+      window.removeEventListener("beforeunload", cancelAbandonedPI);
+    };
+  }, []);
+
   // Phase I #13 (2026-09-23) — UPI +2% surcharge preview.
   // Deferred-intent Elements: the invoice + PI aren't created until
   // runPayment(). So the client just previews the surcharge; the server
@@ -1276,6 +1314,11 @@ function CheckoutFormInner({
         throw new Error(json.error || "Could not start checkout.");
       }
 
+      // 2026-10-07: track the in-flight invoice so the unload handler
+      // can beacon-cancel its PI if the customer bails before confirm
+      // settles. Cleared below once we know the outcome.
+      inFlightInvoiceIdRef.current = json.invoiceId;
+
       // Confirm the payment with the fresh clientSecret. redirect:
       // 'if_required' keeps 3DS-free cards on-page.
       // Pass billing_details from our own form so Stripe stops asking
@@ -1304,6 +1347,11 @@ function CheckoutFormInner({
         return;
       }
       if (paymentIntent && paymentIntent.status === "succeeded") {
+        // 2026-10-07: flip paid flag + clear in-flight ref BEFORE
+        // anything else, so a tab-close between here and onSuccess()
+        // doesn't fire a cancel against a succeeded PI.
+        paidRef.current = true;
+        inFlightInvoiceIdRef.current = null;
         // Phase I #3 (2026-09-10): fire our own on-success endpoint so
         // Telegram + customer receipt + partner emails always land, even
         // if the supplier's Stripe webhook isn't configured for
