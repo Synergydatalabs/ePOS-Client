@@ -14,6 +14,11 @@ import { resolveLinkBySlug, checkLinkAvailability, resolveQuantity } from "@/lib
 // so the checkout page can mount Stripe Elements upfront (deferred intent
 // mode) — card fields visible from the moment the page loads.
 import { loadActiveSupplierStripe } from "@/lib/supplier-stripe";
+// 2026-10-07: Paddle (Model A — shared account for all tenants). When
+// configured on this environment, the pay page shows a "Pay with
+// KakaoPay / PayPal / Alipay / etc" button that routes through Paddle's
+// hosted checkout.
+import { getPaddleConfig } from "@/lib/paddle/constants";
 
 export async function GET(
   request: NextRequest,
@@ -133,6 +138,11 @@ export async function GET(
       // For Elements upfront-mount on the checkout page. Null = supplier
       // has no Stripe → checkout falls back to redirect / mock-pay.
       stripePublishableKey,
+      // 2026-10-07: when Paddle is configured on this environment, the
+      // pay page renders a "Pay with KakaoPay / PayPal / Alipay" button
+      // alongside the Stripe form. Env-var gated — zero impact when
+      // PADDLE_API_KEY is unset.
+      paddleAvailable: getPaddleConfig().isConfigured,
     });
   } catch (err: any) {
     console.error("[PAYMENT-LINK-PUBLIC] GET error:", err);

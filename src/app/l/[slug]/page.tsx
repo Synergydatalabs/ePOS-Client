@@ -115,6 +115,11 @@ interface LinkData {
   // Phase I #2e: supplier's Stripe publishable key. Null when the supplier
   // has no Stripe processor — checkout falls back to the redirect flow.
   stripePublishableKey: string | null;
+  // 2026-10-07: Paddle Model A (shared account). When true the page
+  // renders a "Pay with KakaoPay / PayPal / Alipay / iDEAL" button
+  // that routes through Paddle's hosted checkout. Driven by server
+  // env (PADDLE_API_KEY + PADDLE_PRODUCT_ID + PADDLE_WEBHOOK_SECRET).
+  paddleAvailable?: boolean;
 }
 
 function formatMoney(cents: number, currency: string) {
@@ -178,6 +183,12 @@ export default function PaymentLinkCheckout() {
   const [company, setCompany] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // 2026-10-07: Paddle flow state. The customer clicks "Pay with
+  // KakaoPay / PayPal / Alipay" → we POST /paddle-start → redirect
+  // to Paddle's hosted checkout. "paddleBusy" blocks a double-click
+  // while we're minting the transaction.
+  const [paddleBusy, setPaddleBusy] = useState(false);
+  const [paddleError, setPaddleError] = useState<string | null>(null);
 
   // Auto-sync the T&C signature from the "Full name" field. Customer
   // types their name once; it's used as invoice name AND signature AND
@@ -404,6 +415,52 @@ export default function PaymentLinkCheckout() {
   // flow. Fresh reCAPTCHA token minted per call (v3 tokens are
   // single-use). Returns the body plus the token that was used so
   // the CheckoutForm can log if needed.
+  // 2026-10-07 — Paddle: mint a Paddle hosted-checkout URL from the
+  // same validated form the Stripe path uses, then window.location to
+  // it. Paddle handles the KakaoPay / PayPal / Alipay UX; completion
+  // comes back via the Paddle webhook which flips the invoice to PAID.
+  async function payWithPaddle() {
+    if (!data) return;
+    setPaddleError(null);
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setPaddleError("Please enter a valid email address first");
+      return;
+    }
+    if (data.link.requireName && !name.trim()) {
+      setPaddleError("Name is required");
+      return;
+    }
+    if (!allAccepted) {
+      setPaddleError(
+        terms
+          ? "Please tick all three consent boxes to continue"
+          : "You must accept the Terms of Service and Privacy Policy"
+      );
+      return;
+    }
+
+    setPaddleBusy(true);
+    try {
+      const body = await buildCheckoutBody();
+      const res = await fetch(`/api/public/payment-links/${slug}/paddle-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.paddleCheckoutUrl) {
+        throw new Error(json?.error || "Could not start Paddle checkout");
+      }
+      // Hand the browser off to Paddle. On completion Paddle redirects
+      // back to our /pay/invoice/[id]?paid=1&via=paddle success URL.
+      window.location.href = json.paddleCheckoutUrl;
+    } catch (err: any) {
+      setPaddleError(err?.message || "Could not start Paddle checkout");
+      setPaddleBusy(false);
+    }
+  }
+
   async function buildCheckoutBody(): Promise<Record<string, unknown>> {
     const recaptchaToken = await recaptcha.execute("payment_link_checkout");
     return {
@@ -1000,6 +1057,39 @@ export default function PaymentLinkCheckout() {
                 You&apos;ll be taken to a secure payment page.
               </div>
             </>
+          )}
+
+          {/* 2026-10-07 — Paddle alternative payment methods (KakaoPay,
+               PayPal, Alipay, iDEAL, etc). Hidden entirely when Paddle
+               isn't configured on the server (PADDLE_API_KEY unset) or
+               the customer has already paid. */}
+          {!paidConfirm && data.paddleAvailable && (
+            <div className="mt-6">
+              <div className="my-3 flex items-center gap-3">
+                <div className="flex-1 h-px" style={{ background: "#E1E4EE" }} />
+                <span className="text-xs uppercase tracking-wider" style={{ color: MEGO_INK_3 }}>
+                  or pay with
+                </span>
+                <div className="flex-1 h-px" style={{ background: "#E1E4EE" }} />
+              </div>
+              {paddleError && (
+                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {paddleError}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={payWithPaddle}
+                disabled={paddleBusy || !allAccepted || (!!terms && !typedName.trim())}
+                className="w-full py-3 font-semibold rounded-xl border-2 transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ borderColor: MEGO_BLUE, color: MEGO_BLUE, background: "#FFFFFF" }}
+              >
+                {paddleBusy ? "Opening checkout…" : "Pay with KakaoPay, PayPal, Alipay + more"}
+              </button>
+              <div className="mt-2 text-center text-[11px]" style={{ color: MEGO_INK_3 }}>
+                Secure checkout powered by Paddle · you&apos;ll be redirected to complete payment
+              </div>
+            </div>
           )}
         </div>
       </div>
