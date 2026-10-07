@@ -553,7 +553,7 @@ export default function PaymentLinkModal({ products, onClose, onCreated, editing
                     <div className="mt-1 flex gap-2">
                       <select
                         value={
-                          ["CAD","USD","EUR","GBP","INR","AED","AUD","JPY"].includes(currency)
+                          ["CAD","USD","EUR","GBP","INR","AED","AUD","JPY","KRW"].includes(currency)
                             ? currency
                             : "__custom__"
                         }
@@ -570,6 +570,7 @@ export default function PaymentLinkModal({ products, onClose, onCreated, editing
                         <option value="AED">AED — UAE Dirham</option>
                         <option value="AUD">AUD — Australian Dollar</option>
                         <option value="JPY">JPY — Japanese Yen</option>
+                        <option value="KRW">KRW — South Korean Won</option>
                         <option value="__custom__">Custom…</option>
                       </select>
                       <input

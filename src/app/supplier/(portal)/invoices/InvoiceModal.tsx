@@ -500,7 +500,7 @@ export default function InvoiceModal({ isOpen, onClose, currency, onCreated }: P
                 Recommended
               </span>
             </button>
-            {["USD", "GBP", "EUR", "INR", "AED", "AUD"].map((c) => (
+            {["USD", "GBP", "EUR", "INR", "AED", "AUD", "JPY", "KRW"].map((c) => (
               <button
                 key={c}
                 type="button"
