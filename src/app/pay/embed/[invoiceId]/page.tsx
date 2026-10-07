@@ -33,7 +33,7 @@
 // query param later).
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import {
@@ -370,6 +370,40 @@ function CheckoutForm({
   const [err, setErr] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
 
+  // 2026-10-07 — abandoned-PI cleanup for the iframe/embed flow.
+  //
+  // The embed page mints a PaymentIntent on mount (so Elements can
+  // render the inline card form). If the customer closes the host
+  // page, dismisses the iframe, or navigates away before confirming,
+  // the PI stays as "Incomplete" in the merchant's Stripe dashboard
+  // for days. navigator.sendBeacon survives tab/iframe teardown and
+  // hits our public /cancel-intent endpoint, which issues
+  // paymentIntents.cancel with reason "abandoned".
+  //
+  // succeededRef flips to true the instant confirm settles — prevents
+  // a race where unload fires AFTER success is set but BEFORE the
+  // success state React re-render completes.
+  const succeededRef = useRef(false);
+  useEffect(() => {
+    function cancelAbandoned() {
+      if (succeededRef.current) return;
+      try {
+        navigator.sendBeacon(
+          `/api/pay/invoice/${invoice.id}/cancel-intent`,
+          new Blob([], { type: "text/plain" })
+        );
+      } catch {
+        // Nothing we can do while the page is going away.
+      }
+    }
+    window.addEventListener("pagehide", cancelAbandoned);
+    window.addEventListener("beforeunload", cancelAbandoned);
+    return () => {
+      window.removeEventListener("pagehide", cancelAbandoned);
+      window.removeEventListener("beforeunload", cancelAbandoned);
+    };
+  }, [invoice.id]);
+
   // Phase I #13 (2026-09-23) — UPI +2% surcharge.
   // Track the effective total server-side so the reconciled Stripe amount,
   // the invoice.total_cents, and the button label all stay in sync when
@@ -445,6 +479,10 @@ function CheckoutForm({
         return;
       }
       if (paymentIntent?.status === "succeeded") {
+        // 2026-10-07: flip the paid flag BEFORE any async work so a
+        // tab/iframe-close in the next few ms doesn't cancel the PI
+        // we just captured.
+        succeededRef.current = true;
         // Fire the /paid endpoint — marks invoice PAID + fires our
         // outbound webhook to the partner. Idempotent with the Stripe
         // webhook that arrives shortly after.
