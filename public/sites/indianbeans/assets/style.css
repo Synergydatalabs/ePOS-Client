@@ -54,6 +54,12 @@ p{max-width:66ch}
 .nav-links{display:flex;align-items:center;gap:26px}
 .nav-links a:not(.btn){text-decoration:none;color:var(--leaf);font-weight:500;padding:6px 0;border-bottom:2px solid transparent}
 .nav-links a:not(.btn):hover,.nav-links a[aria-current]{border-bottom-color:var(--cherry);color:var(--leaf)}
+/* 2026-10-08: visually separate the auth buttons from the main menu.
+   .nav-auth-sep breaks the menu/auth boundary with extra left margin + a
+   soft vertical divider; the Login→Sign-up pair sits a little further
+   from the right edge for breathing room. */
+.nav-links .nav-auth-sep{margin-left:28px;padding-left:28px;border-left:1px solid var(--line)}
+.nav-links .nav-auth-cta{margin-left:14px;margin-right:16px}
 .nav-cta{display:flex;gap:10px;align-items:center}
 .nav-toggle{display:none;background:none;border:0;cursor:pointer;width:44px;height:44px;color:var(--leaf)}
 .nav-toggle svg{width:26px;height:26px;margin:auto}

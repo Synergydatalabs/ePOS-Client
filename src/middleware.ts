@@ -77,6 +77,11 @@ const INDIANBEANS_LANDING_PAGES = new Set([
   "/", "/index", "/about", "/features", "/pricing", "/solutions",
   "/integrations", "/contact", "/faq", "/privacy", "/terms",
   "/refunds", "/cookies", "/security", "/404",
+  // 2026-10-08: dedicated Indian Beans signup — simpler than the
+  // Oreugo /partner/signup wizard (no POS vertical picker), posts
+  // to the same /api/partner/auth/register endpoint under the hood
+  // with businessType="general" so the CRM tenant comes out right.
+  "/signup",
 ]);
 const INDIANBEANS_STATIC_FILES = new Set(["/robots.txt", "/sitemap.xml", "/favicon.ico"]);
 // Oreugo-exclusive marketing/legal paths. Only these redirect — the

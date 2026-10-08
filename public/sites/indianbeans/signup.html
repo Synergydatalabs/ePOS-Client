@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start your Indian Beans trial</title>
+<meta name="description" content="Create your free Indian Beans account. 14 days on any plan, no card required.">
+<meta name="theme-color" content="#17301F">
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .auth-wrap{min-height:calc(100vh - 70px);display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--mist)}
+  .auth-card{width:100%;max-width:480px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:40px}
+  .auth-card h1{font-family:var(--display);font-size:1.9rem;font-weight:700;letter-spacing:-.02em;color:var(--leaf);margin:0 0 6px}
+  .auth-card .lead{color:#56604F;font-size:.98rem;margin:0 0 28px}
+  .fld{display:block;margin-bottom:16px}
+  .fld label{display:block;font-size:.82rem;font-weight:600;color:var(--leaf);margin-bottom:6px;letter-spacing:.02em;text-transform:uppercase}
+  .fld input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:1rem;color:var(--leaf);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+  .fld input:focus{border-color:var(--turmeric);box-shadow:0 0 0 3px rgba(224,165,38,.18)}
+  .fld .hint{font-size:.78rem;color:#8a9589;margin-top:4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .cta{width:100%;padding:14px;border-radius:12px;background:var(--cherry);color:#fff;font-family:inherit;font-size:1rem;font-weight:600;border:0;cursor:pointer;margin-top:8px;transition:background .15s,opacity .15s}
+  .cta:hover{background:#9C2328}
+  .cta:disabled{opacity:.55;cursor:not-allowed}
+  .err{margin-top:14px;padding:12px 14px;border-radius:10px;background:#FEF2F2;border:1px solid #FEE2E2;color:#991B1B;font-size:.9rem}
+  .alt{text-align:center;margin-top:22px;font-size:.9rem;color:#56604F}
+  .alt a{color:var(--cherry);font-weight:600;text-decoration:none}
+  .fine{margin-top:18px;font-size:.78rem;color:#8a9589;text-align:center;line-height:1.5}
+  @media(max-width:520px){
+    .row2{grid-template-columns:1fr}
+    .auth-card{padding:28px 22px;border-radius:14px}
+  }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><svg viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(-32 32 32)"><ellipse cx="32" cy="32" rx="18.5" ry="27" fill="#6B3E26"/><path d="M32 5.5c-9 11 9 22 0 33.5-5 6.5-2.5 13 0 19" fill="none" stroke="#E0A526" stroke-width="4.2" stroke-linecap="round"/></g></svg><span>Indian Beans</span></a>
+    <nav class="nav-links" id="nav" aria-label="Main">
+      <a class="nav-auth-sep" href="/partner/login">Already have an account? Log in</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Start your free trial</h1>
+    <p class="lead">14 days on any plan. No credit card required.</p>
+
+    <form id="signupForm" autocomplete="on" novalidate>
+      <label class="fld">
+        <span>Company name</span>
+        <input name="businessName" type="text" required autocomplete="organization" placeholder="e.g. Brightline Studio">
+      </label>
+
+      <div class="row2">
+        <label class="fld">
+          <span>First name</span>
+          <input name="firstName" type="text" required autocomplete="given-name">
+        </label>
+        <label class="fld">
+          <span>Last name</span>
+          <input name="lastName" type="text" autocomplete="family-name">
+        </label>
+      </div>
+
+      <label class="fld">
+        <span>Work email</span>
+        <input name="email" type="email" required autocomplete="email" placeholder="you@company.com">
+      </label>
+
+      <label class="fld">
+        <span>Phone</span>
+        <input name="phone" type="tel" required autocomplete="tel" placeholder="+1 416 555 0123">
+        <div class="hint">For account recovery and verification</div>
+      </label>
+
+      <label class="fld">
+        <span>Password</span>
+        <input name="password" type="password" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+      </label>
+
+      <button type="submit" class="cta" id="submitBtn">Create account</button>
+
+      <div id="formErr" class="err" style="display:none"></div>
+    </form>
+
+    <p class="alt">Already using Indian Beans? <a href="/partner/login">Log in</a></p>
+    <p class="fine">
+      By clicking Create account, you agree to our
+      <a href="terms.html" style="color:#56604F;text-decoration:underline">Terms of Service</a> and
+      <a href="privacy.html" style="color:#56604F;text-decoration:underline">Privacy Policy</a>.
+    </p>
+  </div>
+</div>
+</main>
+
+<script>
+(function(){
+  var form = document.getElementById('signupForm');
+  var btn = document.getElementById('submitBtn');
+  var errBox = document.getElementById('formErr');
+
+  function showErr(msg){
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  function clearErr(){ errBox.style.display = 'none'; errBox.textContent = ''; }
+
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    clearErr();
+    btn.disabled = true;
+    btn.textContent = 'Creating account…';
+
+    var fd = new FormData(form);
+    var payload = {
+      businessName: (fd.get('businessName') || '').toString().trim(),
+      firstName: (fd.get('firstName') || '').toString().trim(),
+      lastName: (fd.get('lastName') || '').toString().trim(),
+      email: (fd.get('email') || '').toString().trim().toLowerCase(),
+      phone: (fd.get('phone') || '').toString().trim(),
+      password: (fd.get('password') || '').toString(),
+      // Indian Beans is a B2B CRM — not a POS vertical. The register
+      // endpoint accepts "general" for non-restaurant/retail/salon tenants.
+      businessType: 'general',
+      currency: 'USD',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    };
+
+    if (!payload.businessName || !payload.firstName || !payload.email || !payload.phone || !payload.password) {
+      showErr('Please fill in all required fields.');
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+    if (payload.password.length < 8) {
+      showErr('Password must be at least 8 characters.');
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+
+    try {
+      var res = await fetch('/api/partner/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json().catch(function(){ return {}; });
+      if (!res.ok) {
+        showErr(data.error || 'Could not create your account. Please try again.');
+        btn.disabled = false; btn.textContent = 'Create account';
+        return;
+      }
+      // Server sets the partner_token cookie — jump to the portal.
+      window.location.href = '/supplier';
+    } catch (err) {
+      showErr('Network error. Please check your connection and try again.');
+      btn.disabled = false; btn.textContent = 'Create account';
+    }
+  });
+})();
+</script>
+</body>
+</html>
