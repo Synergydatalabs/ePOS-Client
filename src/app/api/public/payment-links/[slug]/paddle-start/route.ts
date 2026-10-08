@@ -96,8 +96,8 @@ export async function POST(
           supplierTenantId: link.supplierTenantId,
           termsVersionId: body.termsVersionId.trim(),
           invoiceId: invoice.id,
-          customerEmail: emailRaw,
-          customerName:
+          acceptedEmail: emailRaw,
+          acceptedName:
             (typeof body.acceptedName === "string" && body.acceptedName.trim()) ||
             (typeof body.name === "string" && body.name.trim()) ||
             emailRaw,
@@ -105,14 +105,6 @@ export async function POST(
           userAgent,
           geoCountry: geo?.country ?? null,
           geoRegion: geo?.region ?? null,
-          consents:
-            body.consents && typeof body.consents === "object"
-              ? body.consents
-              : { terms_acceptance: true },
-          acceptedTermsVersion:
-            typeof body.acceptedTermsVersion === "string"
-              ? body.acceptedTermsVersion
-              : "checkout-v1",
         });
       }
     } catch (termsErr) {
