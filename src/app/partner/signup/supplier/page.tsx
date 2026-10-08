@@ -16,14 +16,14 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { usePartnerRoutes } from "@/lib/use-partner-routes";
 import { usePartnerBranding } from "@/lib/use-partner-branding";
-import PartnerSiteShell, { isItapHost } from "@/components/partner/site-shell";
+import PartnerSiteShell, { hostVariant, formAccentForHost, type HostVariant }
+  from "@/components/partner/site-shell";
 
 const NAVY = "#002834";
 // Per-host primary. Oreugo keeps orange; every Synergy Data Labs / hub
 // subdomain gets teal so the form matches the datanova pill nav. Same
 // pattern as /partner/login and /partner/signup.
 const ORANGE_ACCENT = "#FF914D";  // Oreugo brand orange
-const HUB_TEAL      = "#3A3EBF";  // Synergy Data Labs teal
 
 export default function SupplierSignupPage() {
   const router = useRouter();
@@ -45,8 +45,14 @@ export default function SupplierSignupPage() {
   // Per-host primary. SSR default is Oreugo orange; hub / Synergy Data Labs
   // subdomains flip to teal after hydration.
   const [primary, setPrimary] = useState<string>(ORANGE_ACCENT);
+  const [variant, setVariant] = useState<HostVariant>("oreugo");
   useEffect(() => {
-    setPrimary(isItapHost(window.location.hostname) ? HUB_TEAL : ORANGE_ACCENT);
+    const h = window.location.hostname;
+    setVariant(hostVariant(h));
+    // Accent comes from the host's own chrome preset now. The two-way test
+    // here could only ever answer "hub" or "Oreugo", so Indian Beans - a
+    // third tenant with its own apex - rendered in Oreugo orange.
+    setPrimary(formAccentForHost(h));
   }, []);
 
   useEffect(() => {
@@ -144,7 +150,7 @@ export default function SupplierSignupPage() {
             </h1>
             <p className="mt-2 text-sm text-gray-500 max-w-md mx-auto">
               {/* Platform name follows the palette. */}
-              Reach restaurants, cafes, retailers on {primary === HUB_TEAL ? "hub" : "iTap"} POS.
+              Reach restaurants, cafes, retailers on {variant === "hub" ? "hub" : "iTap"} POS.
               Manage your catalog, receive purchase orders, and (once approved) accept card
               payments — all from one portal.
             </p>

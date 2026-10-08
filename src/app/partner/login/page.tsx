@@ -16,7 +16,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { usePartnerRoutes } from "@/lib/use-partner-routes";
 import { usePartnerBranding } from "@/lib/use-partner-branding";
-import PartnerSiteShell, { isItapHost } from "@/components/partner/site-shell";
+import PartnerSiteShell, { hostVariant, formAccentForHost, type HostVariant }
+  from "@/components/partner/site-shell";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 const NAVY = "#002834";
@@ -27,7 +28,6 @@ const NAVY = "#002834";
 // reads as orange sitting inside a teal chrome, which is what the last
 // screenshot flagged.
 const ORANGE_ACCENT = "#FF914D";  // Oreugo brand orange
-const HUB_TEAL      = "#3A3EBF";  // Synergy Data Labs teal
 
 export default function PartnerLoginPage() {
   const router = useRouter();
@@ -43,8 +43,14 @@ export default function PartnerLoginPage() {
   // briefly paint teal on first paint; the effect flips it to teal on hub /
   // Synergy Data Labs hosts after hydration.
   const [primary, setPrimary] = useState<string>(ORANGE_ACCENT);
+  const [variant, setVariant] = useState<HostVariant>("oreugo");
   useEffect(() => {
-    setPrimary(isItapHost(window.location.hostname) ? HUB_TEAL : ORANGE_ACCENT);
+    const h = window.location.hostname;
+    setVariant(hostVariant(h));
+    // Accent comes from the host's own chrome preset now. The two-way test
+    // here could only ever answer "hub" or "Oreugo", so Indian Beans - a
+    // third tenant with its own apex - rendered in Oreugo orange.
+    setPrimary(formAccentForHost(h));
   }, []);
 
   useEffect(() => {
@@ -238,7 +244,13 @@ export default function PartnerLoginPage() {
           <p className="text-center text-xs text-gray-500 mt-6">
             Trouble signing in?{" "}
             <a
-              href={primary === HUB_TEAL ? "mailto:info@synergydatalabs.com" : "mailto:info@oreugo.ca"}
+              href={
+                variant === "hub"
+                  ? "mailto:info@synergydatalabs.com"
+                  : variant === "indianbeans"
+                  ? "mailto:hello@indianbeans.com"
+                  : "mailto:info@oreugo.ca"
+              }
               className="font-medium hover:underline"
               style={{ color: primary }}
             >

@@ -17,12 +17,12 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { usePartnerRoutes } from "@/lib/use-partner-routes";
 import { usePartnerBranding } from "@/lib/use-partner-branding";
-import PartnerSiteShell, { isItapHost } from "@/components/partner/site-shell";
+import PartnerSiteShell, { hostVariant, formAccentForHost, type HostVariant }
+  from "@/components/partner/site-shell";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 const NAVY = "#002834";
 const ORANGE_ACCENT = "#FF914D";
-const HUB_TEAL = "#3A3EBF";
 
 type Step = "request" | "verify" | "done";
 
@@ -32,8 +32,14 @@ function ResetPasswordContent() {
   const recaptcha = useRecaptcha();
 
   const [primary, setPrimary] = useState<string>(ORANGE_ACCENT);
+  const [variant, setVariant] = useState<HostVariant>("oreugo");
   useEffect(() => {
-    setPrimary(isItapHost(window.location.hostname) ? HUB_TEAL : ORANGE_ACCENT);
+    const h = window.location.hostname;
+    setVariant(hostVariant(h));
+    // Accent comes from the host's own chrome preset now. The two-way test
+    // here could only ever answer "hub" or "Oreugo", so Indian Beans - a
+    // third tenant with its own apex - rendered in Oreugo orange.
+    setPrimary(formAccentForHost(h));
   }, []);
 
   const [step, setStep] = useState<Step>("request");
@@ -359,7 +365,13 @@ function ResetPasswordContent() {
           <p className="text-center text-xs text-gray-500 mt-6">
             Need help?{" "}
             <a
-              href={primary === HUB_TEAL ? "mailto:info@synergydatalabs.com" : "mailto:info@oreugo.ca"}
+              href={
+                variant === "hub"
+                  ? "mailto:info@synergydatalabs.com"
+                  : variant === "indianbeans"
+                  ? "mailto:hello@indianbeans.com"
+                  : "mailto:info@oreugo.ca"
+              }
               className="font-medium hover:underline"
               style={{ color: primary }}
             >

@@ -16,7 +16,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { usePartnerRoutes } from "@/lib/use-partner-routes";
 import { usePartnerBranding } from "@/lib/use-partner-branding";
-import PartnerSiteShell, { isItapHost } from "@/components/partner/site-shell";
+import PartnerSiteShell, { hostVariant, formAccentForHost, type HostVariant }
+  from "@/components/partner/site-shell";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 const NAVY = "#002834";
@@ -24,8 +25,7 @@ const NAVY = "#002834";
 // Synergy Data Labs / hub subdomain gets teal so the form matches the
 // datanova pill nav rendered by ItapShell around it. Same pattern as
 // /partner/login.
-const ORANGE_ACCENT = "#FF914D";  // Oreugo brand orange
-const HUB_TEAL      = "#3A3EBF";  // Synergy Data Labs teal
+const ORANGE_ACCENT = "#FF914D";  // Oreugo brand orange — the SSR default
 
 export default function PartnerSignupPage() {
   const router = useRouter();
@@ -63,9 +63,27 @@ export default function PartnerSignupPage() {
   // flash teal on first paint; the effect flips it to teal on hub /
   // Synergy Data Labs hosts after hydration. Same pattern as /partner/login.
   const [primary, setPrimary] = useState<string>(ORANGE_ACCENT);
+  // 2026-10-08: the variant, not the colour, decides copy and flow.
+  // This page used to ask `primary === HUB_TEAL` to mean "are we on hub",
+  // which made a third tenant impossible to express — Indian Beans came out
+  // as Oreugo in both palette and wording.
+  const [variant, setVariant] = useState<HostVariant>("oreugo");
   useEffect(() => {
-    setPrimary(isItapHost(window.location.hostname) ? HUB_TEAL : ORANGE_ACCENT);
+    const h = window.location.hostname;
+    setVariant(hostVariant(h));
+    setPrimary(formAccentForHost(h));
   }, []);
+
+  // Indian Beans sells a CRM for B2B teams — there is no POS in the product,
+  // so the three POS flavours in Step 1 are meaningless there. Signup is a
+  // supplier account and starts at the details step.
+  const isIndianBeans = variant === "indianbeans";
+  useEffect(() => {
+    if (!isIndianBeans) return;
+    setRole("supplier");
+    setForm((prev) => ({ ...prev, businessType: "general" }));
+    setStep((prev) => (prev < 2 ? 2 : prev));
+  }, [isIndianBeans]);
 
   useEffect(() => {
     document.title = `Sign Up | ${displayName}`;
@@ -216,7 +234,7 @@ export default function PartnerSignupPage() {
       icon: "solar:shop-2-bold-duotone",
     },
   ];
-  const businessTypes = primary === HUB_TEAL ? HUB_BUSINESS_TYPES : OREUGO_BUSINESS_TYPES;
+  const businessTypes = variant === "hub" ? HUB_BUSINESS_TYPES : OREUGO_BUSINESS_TYPES;
 
   return (
     <PartnerSiteShell>
@@ -238,21 +256,30 @@ export default function PartnerSignupPage() {
                 <Icon icon="solar:add-square-bold-duotone" className="w-9 h-9" style={{ color: primary }} />
               </div>
               <h1 className="text-3xl font-bold" style={{ color: NAVY }}>
-                {primary === HUB_TEAL ? "Sign up for hub" : "Create your business"}
+                {variant === "hub"
+                  ? "Sign up for hub"
+                  : isIndianBeans
+                  ? "Create your account"
+                  : "Create your business"}
               </h1>
               <p className="text-base text-gray-600 mt-2">
-                {primary === HUB_TEAL
+                {variant === "hub"
                   ? "One account. Pick what you'll use hub for below."
+                  : isIndianBeans
+                  ? "Start running your pipeline in minutes"
                   : "Set up your POS system in minutes"}
               </p>
             </div>
 
-            {/* Step Indicator */}
+            {/* Step Indicator — Indian Beans has no Step 1, so it shows two
+                segments rather than a bar that starts a third of the way in. */}
             <div className="flex items-center gap-2 mb-8">
-              <div
-                className="flex-1 h-1.5 rounded-full transition-colors"
-                style={{ backgroundColor: step >= 1 ? primary : "#E5E7EB" }}
-              />
+              {!isIndianBeans && (
+                <div
+                  className="flex-1 h-1.5 rounded-full transition-colors"
+                  style={{ backgroundColor: step >= 1 ? primary : "#E5E7EB" }}
+                />
+              )}
               <div
                 className="flex-1 h-1.5 rounded-full transition-colors"
                 style={{ backgroundColor: step >= 2 ? primary : "#E5E7EB" }}
@@ -265,10 +292,10 @@ export default function PartnerSignupPage() {
 
             <form onSubmit={handleSignup}>
               {/* ====== Step 1: Business Type ====== */}
-              {step === 1 && (
+              {step === 1 && !isIndianBeans && (
                 <div className="space-y-5">
                   <p className="text-sm font-semibold mb-3" style={{ color: NAVY }}>
-                    {primary === HUB_TEAL
+                    {variant === "hub"
                       ? "What do you want to do on hub?"
                       : "What type of business are you?"}
                   </p>
@@ -319,7 +346,7 @@ export default function PartnerSignupPage() {
                         creator-specific fields (company legal name, etc.).
                         Kept off Oreugo + other white-label partner domains —
                         they're POS-only. */}
-                    {primary === HUB_TEAL && (
+                    {variant === "hub" && (
                       // Phase F #6e (2026-08-27): tile now advances in-form
                       // instead of navigating to /partner/signup/supplier.
                       // Sets role='supplier' + businessType='general' so the
@@ -358,6 +385,7 @@ export default function PartnerSignupPage() {
                   <button
                     type="button"
                     onClick={() => setStep(1)}
+                    hidden={isIndianBeans}
                     className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 -mt-2 mb-2"
                   >
                     <Icon icon="solar:arrow-left-linear" className="w-4 h-4" /> Back
@@ -675,7 +703,7 @@ export default function PartnerSignupPage() {
                 one click, so the pointer just adds noise — hidden. On Oreugo
                 (POS-only) the tile isn't shown, so we keep the fallback so
                 the odd supplier who lands there has a way over. */}
-            {primary !== HUB_TEAL && (
+            {variant === "oreugo" && (
               <p className="text-center text-sm text-gray-500 mt-2">
                 Sell to businesses on iTap?{" "}
                 <Link
@@ -692,7 +720,13 @@ export default function PartnerSignupPage() {
           <p className="text-center text-xs text-gray-500 mt-6">
             Need help?{" "}
             <a
-              href={primary === HUB_TEAL ? "mailto:info@synergydatalabs.com" : "mailto:info@oreugo.ca"}
+              href={
+                variant === "hub"
+                  ? "mailto:info@synergydatalabs.com"
+                  : isIndianBeans
+                  ? "mailto:hello@indianbeans.com"
+                  : "mailto:info@oreugo.ca"
+              }
               className="font-medium hover:underline"
               style={{ color: primary }}
             >

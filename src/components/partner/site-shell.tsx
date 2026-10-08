@@ -54,6 +54,17 @@ interface ShellChrome {
   headerBg: string;
   footerBg: string;
   ctaBg: string;
+  // 2026-10-08: the accent the AUTH FORMS use - buttons, focus rings,
+  // selected tiles. Deliberately separate from ctaBg, which is the marketing
+  // CTA on the chrome: Indian Beans' header CTA is gold (#E0A526), and gold
+  // carrying white button text is about 1.9:1, so reusing ctaBg in a form
+  // would be unreadable. This is the tenant's own primary-button colour.
+  //
+  // It exists because the auth pages were each deciding their accent with a
+  // two-way host test (hub teal or Oreugo orange), so a third tenant could
+  // only ever come out as one of the other two. Indian Beans rendered the
+  // whole signup card in Oreugo orange inside its own green chrome.
+  formAccent: string;
   logoOnLight: string;
   logoOnDark: string;
   contactEmail: string;
@@ -71,6 +82,7 @@ const OREUGO_CHROME: ShellChrome = {
   headerBg: "#195937",     // brand green
   footerBg: "#202F27",     // deep green
   ctaBg: "#FF914D",        // brand orange
+  formAccent: "#FF914D",   // same as the CTA - orange on white reads fine
   logoOnLight: "/images/logo/pl/oreugo_wordmark_black.png",
   logoOnDark: "/images/logo/pl/oreugo_wordmark_white.png",
   contactEmail: "info@oreugo.ca",
@@ -87,6 +99,7 @@ const ITAP_CHROME: ShellChrome = {
   headerBg: "#6D5DEC",     // iTap purple (matches wordmark gradient start)
   footerBg: "#2A1E5C",     // deep purple
   ctaBg: "#E13FB0",        // iTap magenta (matches wordmark gradient end)
+  formAccent: "#3A3EBF",   // Synergy teal, as the auth pages already used
   logoOnLight: "/images/logo/itap-wordmark.png",
   logoOnDark: "/images/logo/itap-wordmark.png",
   contactEmail: "hello@synergydatalabs.com",
@@ -107,6 +120,7 @@ const INDIANBEANS_CHROME: ShellChrome = {
   headerBg: "#17301F",     // deep forest green (--theme in landing CSS)
   footerBg: "#0F2317",     // even deeper green for footer contrast
   ctaBg: "#E0A526",        // gold accent (same as landing CTAs)
+  formAccent: "#B8322A",   // --cherry from the landing CSS: their own .btn colour
   logoOnLight: "/sites/indianbeans/assets/logo.svg",
   logoOnDark: "/sites/indianbeans/assets/logo.svg",
   contactEmail: "hello@indianbeans.com",
@@ -125,6 +139,36 @@ const INDIANBEANS_CHROME: ShellChrome = {
     ["Contact", "/contact"],
   ],
 };
+
+/**
+ * Which tenant a hostname belongs to.
+ *
+ * The auth pages used to infer this by comparing their accent colour against
+ * a constant - `primary === HUB_TEAL` stood in for "are we on hub". That
+ * breaks the moment a third tenant exists, and it broke silently: Indian
+ * Beans is neither hub nor Oreugo, so it inherited Oreugo's copy along with
+ * Oreugo's orange. Ask for the variant instead of reading the paint.
+ */
+export type HostVariant = "oreugo" | "hub" | "indianbeans";
+
+export function hostVariant(hostname: string): HostVariant {
+  const h = hostname.toLowerCase();
+  if (h === "indianbeans.com" || h === "www.indianbeans.com") return "indianbeans";
+  if (
+    h.includes("synergydatalabs") ||
+    h === "itap.zashx.com" ||
+    h === "localhost" ||
+    h.startsWith("127.")
+  ) {
+    return "hub";
+  }
+  return "oreugo";
+}
+
+/** The accent an auth form should paint itself with on this host. */
+export function formAccentForHost(hostname: string): string {
+  return pickChromeForHost(hostname).formAccent;
+}
 
 const BRAND_FONT_STACK = "'Helvetica Now Display', Helvetica, Arial, sans-serif";
 
