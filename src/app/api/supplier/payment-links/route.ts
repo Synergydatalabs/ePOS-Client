@@ -12,6 +12,29 @@ import {
   type CreatePaymentLinkInput,
 } from "@/lib/payment-link.service";
 
+// 2026-10-08: build the share-URL base from the request's own host when
+// possible, so white-label tenant portals (indianbeans.com, oreugo.ca)
+// generate links on their own apex instead of a hardcoded hub URL.
+// Falls back to NEXT_PUBLIC_APP_URL / hub.synergydatalabs.com if the
+// request somehow has no host header (shouldn't happen in prod via
+// the ALB, but defensive).
+function resolvePublicBase(request: NextRequest): string {
+  const hostHeader = request.headers.get("host");
+  if (hostHeader) {
+    // Guess the scheme: honour x-forwarded-proto when the ALB sets it,
+    // else default to https (prod) / http (localhost).
+    const proto =
+      request.headers.get("x-forwarded-proto") ||
+      (hostHeader.startsWith("localhost") || hostHeader.startsWith("127.") ? "http" : "https");
+    return `${proto}://${hostHeader}`;
+  }
+  const envBase =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_MARKETING_URL ||
+    "https://hub.synergydatalabs.com";
+  return envBase.replace(/\/+$/, "");
+}
+
 async function requireSupplier(request: NextRequest) {
   const session = await getPartnerSession(request);
   if (!session) {
@@ -43,16 +66,19 @@ export async function GET(request: NextRequest) {
       partnerRef,
     });
 
-    const publicBase =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_MARKETING_URL?.replace(/\/+$/, "") ||
-      "https://hub.synergydatalabs.com";
+    // 2026-10-08: use the request's own host when generating the
+    // share URL so white-label tenants (indianbeans.com, oreugo.ca,
+    // etc) get links on their own apex instead of hub.synergydatalabs.
+    // The /l/<slug> slug works on every host that routes to tap-app,
+    // so the choice of host only affects what the supplier sees in
+    // their portal and copies to their customers.
+    const publicBase = resolvePublicBase(request);
 
     return NextResponse.json({
       success: true,
       links: links.map((l) => ({
         ...l,
-        publicUrl: `${publicBase.replace(/\/+$/, "")}/l/${l.shortSlug}`,
+        publicUrl: `${publicBase}/l/${l.shortSlug}`,
       })),
     });
   } catch (err: any) {
@@ -119,13 +145,11 @@ export async function POST(request: NextRequest) {
 
     const link = await createPaymentLink(input);
 
-    const publicBase =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "https://hub.synergydatalabs.com";
+    const publicBase = resolvePublicBase(request);
     return NextResponse.json({
       success: true,
       link,
-      publicUrl: `${publicBase.replace(/\/+$/, "")}/l/${link.shortSlug}`,
+      publicUrl: `${publicBase}/l/${link.shortSlug}`,
     });
   } catch (err: any) {
     console.error("[PAYMENT-LINKS] POST error:", err);
