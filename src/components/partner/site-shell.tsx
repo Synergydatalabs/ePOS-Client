@@ -92,6 +92,24 @@ const ITAP_CHROME: ShellChrome = {
   ],
 };
 
+// 2026-10-07: Indian Beans — white-label tenant with its own apex,
+// own brand palette (deep forest green + gold), own landing site
+// served from /public/sites/indianbeans/. Picking the right chrome
+// for indianbeans.com keeps auth pages (signin, signup, etc) visually
+// continuous with the marketing site rather than defaulting to
+// Oreugo or Synergy Data Labs branding.
+const INDIANBEANS_CHROME: ShellChrome = {
+  headerBg: "#17301F",     // deep forest green (--theme in landing CSS)
+  footerBg: "#0F2317",     // even deeper green for footer contrast
+  ctaBg: "#E0A526",        // gold accent (same as landing CTAs)
+  logoOnLight: "/sites/indianbeans/assets/logo.svg",
+  logoOnDark: "/sites/indianbeans/assets/logo.svg",
+  contactEmail: "hello@indianbeans.com",
+  contactPhone: null,
+  companyName: "Indian Beans",
+  socials: [],
+};
+
 const BRAND_FONT_STACK = "'Helvetica Now Display', Helvetica, Arial, sans-serif";
 
 /**
@@ -102,17 +120,17 @@ const BRAND_FONT_STACK = "'Helvetica Now Display', Helvetica, Arial, sans-serif"
  */
 function pickChromeForHost(hostname: string): ShellChrome {
   const h = hostname.toLowerCase();
+  // White-label tenants with their own apex get their own chrome preset
+  // first — this branch has to come BEFORE the Synergy / Oreugo
+  // fallback so each tenant keeps its brand.
+  if (h === "indianbeans.com" || h === "www.indianbeans.com") {
+    return INDIANBEANS_CHROME;
+  }
   if (
     h.includes("synergydatalabs") ||
     h === "itap.zashx.com" ||
     h === "localhost" ||
-    h.startsWith("127.") ||
-    // 2026-10-07: white-label tenants that run on their own apex
-    // get minimal iTap chrome instead of Oreugo marketing — their
-    // actual branding is handled by the per-tenant settings and the
-    // static landing site served from /public/sites/<slug>/.
-    h === "indianbeans.com" ||
-    h === "www.indianbeans.com"
+    h.startsWith("127.")
   ) {
     return ITAP_CHROME;
   }
@@ -132,15 +150,15 @@ function pickChromeForHost(hostname: string): ShellChrome {
 // every partner page in the same pass.
 export function isItapHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
+  // Only true Synergy Data Labs / iTap hosts get the ItapShell
+  // (datanova pill nav, "hub" wordmark, teal footer). White-label
+  // tenants render through the Oreugo-style shell with their own
+  // chrome preset applied — see pickChromeForHost.
   return (
     h.includes("synergydatalabs") ||   // hub.*, itap.*, www.*, apex, etc.
     h === "itap.zashx.com" ||
     h === "localhost" ||
-    h.startsWith("127.") ||
-    // 2026-10-07: white-label tenants on their own apex (see
-    // pickChromeForHost above — keep both lists in sync).
-    h === "indianbeans.com" ||
-    h === "www.indianbeans.com"
+    h.startsWith("127.")
   );
 }
 
