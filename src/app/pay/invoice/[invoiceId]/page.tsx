@@ -947,14 +947,30 @@ export default function PayInvoicePage() {
                 />
               </div>
             ) : (
-              <button
-                onClick={pay}
-                disabled={paying || !allAccepted || (!!terms && !typedName.trim())}
-                className={`mt-5 w-full px-6 py-4 text-base text-white shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 ${vendorTheme ? "rounded-lg font-bold" : "rounded-xl font-semibold"}`}
-                style={{ backgroundColor: primary }}
+              // 2026-10-08: when no real processor is configured, the
+              // old flow rendered a "Pay now" button that called
+              // /mock-pay and marked the invoice PAID with the "Mock"
+              // processor — WITHOUT any money moving. In production
+              // that's dangerous: a customer could click Pay, see
+              // "Payment successful", and the supplier would get a
+              // Telegram "received a payment through Mock" without
+              // actually being paid.
+              //
+              // Replaced with a clear "payment unavailable" notice.
+              // The customer should contact the supplier to be given
+              // a different link once the supplier has a processor
+              // (Stripe, Paddle, etc.) assigned.
+              <div
+                className="mt-5 p-4 rounded-xl border-2 text-sm"
+                style={{ borderColor: "#F59E0B", background: "#FFFBEB", color: "#78350F" }}
               >
-                {paying ? "Processing…" : `Pay ${money(invoice.totalCents)} now`}
-              </button>
+                <strong>Payment temporarily unavailable</strong>
+                <p className="mt-1 text-xs">
+                  Online payment isn&rsquo;t configured on this invoice yet.
+                  Please contact {invoice.supplier.displayName} for an alternative
+                  way to pay.
+                </p>
+              </div>
             )}
 
             {vendorTheme ? (
