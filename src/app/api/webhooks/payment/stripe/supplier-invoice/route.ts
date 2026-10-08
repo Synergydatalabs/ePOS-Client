@@ -149,9 +149,17 @@ export async function POST(request: NextRequest) {
       webhookSecret: creds.webhookSecret,
     });
   } catch (err: any) {
+    // 2026-10-08: include tenant + invoice ids and the stored-secret
+    // prefix so operators can tell WHICH supplier has a mismatched
+    // webhook secret. Prefix only — never log the full secret.
+    const secretPrefix = creds.webhookSecret
+      ? `${creds.webhookSecret.slice(0, 10)}…`
+      : "(none)";
     console.error(
-      "[STRIPE-SUPPLIER-WEBHOOK] signature verification failed:",
-      err?.message || err
+      `[STRIPE-SUPPLIER-WEBHOOK] signature verification failed ` +
+        `(tenant=${invoice.supplierTenantId} supplier=${invoice.supplier.name} ` +
+        `invoice=${peekedInvoiceId} secret=${secretPrefix}): ` +
+        (err?.message || err)
     );
     return NextResponse.json({ error: "Signature verification failed" }, { status: 400 });
   }
