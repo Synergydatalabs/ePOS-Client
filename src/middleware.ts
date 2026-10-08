@@ -98,6 +98,11 @@ const INDIANBEANS_REDIRECTS: Record<string, string> = {
   "/partner/about":    "/about",
   "/partner/cookies":  "/cookies",
   "/partner/privacy":  "/privacy",
+  // 2026-10-08: /partner/signup is the Oreugo wizard with the Restaurant /
+  // Retail / Salon business-type picker, which is wrong for Indian Beans
+  // (a B2B CRM). Redirect every entry point to our dedicated /signup page.
+  "/partner/signup":   "/signup",
+  "/partner/signup/":  "/signup",
 };
 
 export async function middleware(request: NextRequest) {
