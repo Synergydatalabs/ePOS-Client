@@ -102,7 +102,18 @@ const BRAND_FONT_STACK = "'Helvetica Now Display', Helvetica, Arial, sans-serif"
  */
 function pickChromeForHost(hostname: string): ShellChrome {
   const h = hostname.toLowerCase();
-  if (h.includes("synergydatalabs") || h === "itap.zashx.com" || h === "localhost" || h.startsWith("127.")) {
+  if (
+    h.includes("synergydatalabs") ||
+    h === "itap.zashx.com" ||
+    h === "localhost" ||
+    h.startsWith("127.") ||
+    // 2026-10-07: white-label tenants that run on their own apex
+    // get minimal iTap chrome instead of Oreugo marketing — their
+    // actual branding is handled by the per-tenant settings and the
+    // static landing site served from /public/sites/<slug>/.
+    h === "indianbeans.com" ||
+    h === "www.indianbeans.com"
+  ) {
     return ITAP_CHROME;
   }
   return OREUGO_CHROME;
@@ -125,7 +136,11 @@ export function isItapHost(hostname: string): boolean {
     h.includes("synergydatalabs") ||   // hub.*, itap.*, www.*, apex, etc.
     h === "itap.zashx.com" ||
     h === "localhost" ||
-    h.startsWith("127.")
+    h.startsWith("127.") ||
+    // 2026-10-07: white-label tenants on their own apex (see
+    // pickChromeForHost above — keep both lists in sync).
+    h === "indianbeans.com" ||
+    h === "www.indianbeans.com"
   );
 }
 
