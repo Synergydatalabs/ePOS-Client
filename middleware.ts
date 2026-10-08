@@ -66,12 +66,37 @@ function findSiteForHost(host: string): LandingSite | null {
   return null;
 }
 
+// 2026-10-07: on a white-label tenant's apex, Oreugo's own marketing
+// landing (/partner) and its legal pages (/partner/about,
+// /partner/cookies, /partner/privacy, etc) should NOT be reachable —
+// they would show Oreugo-branded content to Indian Beans customers.
+// Redirect each to the tenant's own equivalent instead. Auth routes
+// (/partner/login, /partner/signup, /partner/reset-password,
+// /partner/dashboard, /partner/supplier, ...) are intentionally NOT in
+// this map so they continue to serve.
+const OREUGO_LANDING_REDIRECTS: Record<string, string> = {
+  "/partner":          "/",
+  "/partner/":         "/",
+  "/partner/about":    "/about",
+  "/partner/cookies":  "/cookies",
+  "/partner/privacy":  "/privacy",
+};
+
 export function middleware(request: NextRequest) {
   const host = (request.headers.get("host") || "").toLowerCase().split(":")[0];
   const site = findSiteForHost(host);
   if (!site) return NextResponse.next();
 
   const path = request.nextUrl.pathname;
+
+  // 0) Oreugo-exclusive marketing/legal paths → redirect to this
+  //    tenant's own equivalent before any rewrite logic runs.
+  const redirectTarget = OREUGO_LANDING_REDIRECTS[path];
+  if (redirectTarget) {
+    const url = request.nextUrl.clone();
+    url.pathname = redirectTarget;
+    return NextResponse.redirect(url, 308);
+  }
 
   // 1) Known marketing page in the allow-list → rewrite to the HTML
   const pageSet = new Set(site.pages);

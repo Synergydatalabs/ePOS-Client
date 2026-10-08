@@ -65,15 +65,48 @@ function SignInContent() {
   // legacy indigo everywhere else. Detected once on mount; SSR default is
   // hub so the first paint on the flagship platform host doesn't flash the
   // wrong accent.
-  const [isHub, setIsHub] = useState(true);
+  // 2026-10-07: multi-tenant brand switch for the login card. The old
+  // boolean (hub / iTap) didn't cover white-label tenants that have
+  // their own apex and expect their own name on the signin header.
+  // "indianbeans" is the first of these; add more as other white-label
+  // tenants come online by extending BrandMode + the switch below.
+  type BrandMode = "hub" | "indianbeans" | "itap";
+  const [brandMode, setBrandMode] = useState<BrandMode>("hub");
   useEffect(() => {
-    setIsHub(isItapHost(window.location.hostname));
+    const h = window.location.hostname.toLowerCase();
+    if (h === "indianbeans.com" || h === "www.indianbeans.com") {
+      setBrandMode("indianbeans");
+    } else if (isItapHost(h)) {
+      setBrandMode("hub");
+    } else {
+      setBrandMode("itap");
+    }
   }, []);
-  const accent      = isHub ? HUB_TEAL_DEEP : INDIGO_LEGACY;
-  const accentTint  = isHub ? HUB_TEAL_TINT : INDIGO_TINT;
-  const accentRing  = isHub ? HUB_TEAL_RING : INDIGO_RING;
-  const logoSrc     = isHub ? "/images/logo/hub-wordmark.svg" : "/images/logo/itap-wordmark.png";
-  const brandName   = isHub ? "hub" : "iTap";
+  // Palette per brand. Indian Beans green/gold matches their landing
+  // CSS and the INDIANBEANS_CHROME preset in site-shell.tsx.
+  const INDIANBEANS_GREEN      = "#17301F";
+  const INDIANBEANS_GREEN_TINT = "#E8EEE9";
+  const INDIANBEANS_GREEN_RING = "#8FA696";
+  const accent =
+    brandMode === "hub"         ? HUB_TEAL_DEEP :
+    brandMode === "indianbeans" ? INDIANBEANS_GREEN :
+                                   INDIGO_LEGACY;
+  const accentTint =
+    brandMode === "hub"         ? HUB_TEAL_TINT :
+    brandMode === "indianbeans" ? INDIANBEANS_GREEN_TINT :
+                                   INDIGO_TINT;
+  const accentRing =
+    brandMode === "hub"         ? HUB_TEAL_RING :
+    brandMode === "indianbeans" ? INDIANBEANS_GREEN_RING :
+                                   INDIGO_RING;
+  const logoSrc =
+    brandMode === "hub"         ? "/images/logo/hub-wordmark.svg" :
+    brandMode === "indianbeans" ? "/sites/indianbeans/assets/logo.svg" :
+                                   "/images/logo/itap-wordmark.png";
+  const brandName =
+    brandMode === "hub"         ? "hub" :
+    brandMode === "indianbeans" ? "Indian Beans" :
+                                   "iTap";
 
   // Check if user is already logged in - only once on mount
   useEffect(() => {
