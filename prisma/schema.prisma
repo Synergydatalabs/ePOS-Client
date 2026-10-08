@@ -4744,6 +4744,16 @@ model SupplierInvoice {
   // Currency + amount the processor actually captured (may differ from
   // totalCents on partial capture, fee deductions, or FX conversion).
   amountPaidCents   Int?      @map("amount_paid_cents")
+  // 2026-10-08: Acquirer-side transaction reference beyond our processor ref.
+  // For UPI payments via Stripe this is the NPCI/acquirer RRN pulled out of
+  // charges.data[0].payment_method_details.upi.reference and lets clients
+  // reconcile against their own bank/UPI statements. Nullable — not every
+  // payment method yields such a reference (card charges typically don't).
+  providerReference String?   @map("provider_reference") @db.VarChar(100)
+  // 2026-10-08: Buyer's VPA for UPI payments (e.g. 9876543210@okaxis).
+  // Captured from Stripe for the same reconciliation + fraud-review use case.
+  // Null for non-UPI methods.
+  payerVpa          String?   @map("payer_vpa") @db.VarChar(120)
 
   // ---- Lifecycle timestamps --------------------------------------------
   sentAt            DateTime  @default(now()) @map("sent_at")
@@ -4808,6 +4818,9 @@ model SupplierInvoice {
   // the processor's own reference which we stashed on create.
   @@index([paymentLinkRef])
   @@index([subscriptionId, subscriptionSequence])
+  // 2026-10-08: lookup by acquirer-side reference (e.g. UPI RRN) for
+  // reconciliation requests from clients + compliance teams.
+  @@index([providerReference])
   @@map("supplier_invoices")
 }
 

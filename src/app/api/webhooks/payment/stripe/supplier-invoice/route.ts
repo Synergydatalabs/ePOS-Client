@@ -21,8 +21,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { kybDecryptJson } from "@/lib/kyb-crypto";
-import { verifyWebhookEvent } from "@/lib/stripe/client";
+import { buildStripeClient, verifyWebhookEvent } from "@/lib/stripe/client";
 import type { StripeCredentials } from "@/lib/stripe/types";
+// 2026-10-08: pull acquirer-side references (e.g. UPI RRN + VPA) from each
+// successful charge so reconciliation / compliance requests can match our
+// invoices against bank + NPCI statements. See extract-provider-reference.ts.
+import {
+  extractProviderReferenceFromObject,
+  fetchChargeForReference,
+} from "@/lib/stripe/extract-provider-reference";
 import { onSubscriptionInvoicePaid } from "@/lib/supplier-subscriptions";
 import { notifyInvoicePaid } from "@/lib/telegram-notify";
 // Phase I #3 (2026-09-10): fan out receipt + partner emails from the
@@ -165,13 +172,39 @@ export async function POST(request: NextRequest) {
           break;
         }
         const paidAt = new Date();
+        // 2026-10-08: for UPI / wallet methods, pull the acquirer-side
+        // reference (NPCI RRN for UPI, buyer VPA) by expanding the
+        // PaymentIntent → latest_charge. For card charges this just adds
+        // "stripe_card_<brand>" to paidMethod. The call is best-effort —
+        // if it fails we still mark the invoice PAID.
+        let acquirer = { reference: null as string | null, vpa: null as string | null, paidMethod: null as string | null };
+        if (typeof session.payment_intent === "string") {
+          try {
+            const stripe = buildStripeClient(creds);
+            const pi = await stripe.paymentIntents.retrieve(
+              session.payment_intent,
+              { expand: ["latest_charge"] }
+            );
+            const latest = pi.latest_charge;
+            if (latest && typeof latest !== "string") {
+              acquirer = extractProviderReferenceFromObject(latest);
+            } else if (typeof latest === "string") {
+              acquirer = await fetchChargeForReference(creds, latest);
+            }
+          } catch (err) {
+            console.warn(
+              "[STRIPE-SUPPLIER-WEBHOOK] acquirer-ref lookup failed:",
+              (err as Error).message
+            );
+          }
+        }
         await prisma.supplierInvoice.update({
           where: { id: invoice.id },
           data: {
             paymentStatus: "PAID",
             status: "PAID",
             paidAt,
-            paidMethod: "STRIPE",
+            paidMethod: acquirer.paidMethod || "STRIPE",
             amountPaidCents: session.amount_total ?? invoice.totalCents,
             // paymentLinkRef was set to session.id at checkout create;
             // now switch it to the payment_intent id which is what refund
@@ -180,6 +213,8 @@ export async function POST(request: NextRequest) {
               typeof session.payment_intent === "string"
                 ? session.payment_intent
                 : session.id,
+            providerReference: acquirer.reference,
+            payerVpa: acquirer.vpa,
           },
         });
         // Phase G #1: subscription activation. No-op for one-off invoices.
@@ -220,19 +255,35 @@ export async function POST(request: NextRequest) {
           amount: number;
           currency: string;
           metadata?: Record<string, string>;
+          latest_charge?: string | { id: string; payment_method_details?: unknown };
+          charges?: { data?: Array<Record<string, unknown>> };
         };
         if (invoice.paymentStatus === "PAID") break; // already reconciled
         const paidAt = new Date();
+        // 2026-10-08: extract acquirer-side references. First try inline
+        // (legacy `charges.data[0]` or already-expanded `latest_charge`
+        // object); fall back to a fetch when latest_charge is just an id.
+        let acquirer = extractProviderReferenceFromObject(intent);
+        if (!acquirer.reference && !acquirer.paidMethod) {
+          const latest = intent.latest_charge;
+          if (typeof latest === "string") {
+            acquirer = await fetchChargeForReference(creds, latest);
+          } else if (latest && typeof latest === "object") {
+            acquirer = extractProviderReferenceFromObject(latest);
+          }
+        }
         await prisma.supplierInvoice.update({
           where: { id: invoice.id },
           data: {
             paymentStatus: "PAID",
             status: "PAID",
             paidAt,
-            paidMethod: "STRIPE",
+            paidMethod: acquirer.paidMethod || "STRIPE",
             amountPaidCents: intent.amount ?? invoice.totalCents,
             // Store the PaymentIntent id so refunds land on the right row.
             paymentLinkRef: intent.id,
+            providerReference: acquirer.reference,
+            payerVpa: acquirer.vpa,
           },
         });
         await onSubscriptionInvoicePaid(invoice.id, paidAt);
