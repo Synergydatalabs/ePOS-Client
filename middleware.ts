@@ -67,19 +67,32 @@ function findSiteForHost(host: string): LandingSite | null {
 }
 
 // 2026-10-07: on a white-label tenant's apex, Oreugo's own marketing
-// landing (/partner) and its legal pages (/partner/about,
-// /partner/cookies, /partner/privacy, etc) should NOT be reachable —
-// they would show Oreugo-branded content to Indian Beans customers.
-// Redirect each to the tenant's own equivalent instead. Auth routes
-// (/partner/login, /partner/signup, /partner/reset-password,
-// /partner/dashboard, /partner/supplier, ...) are intentionally NOT in
-// this map so they continue to serve.
+// landing (/partner) and its legal pages (/partner/about, etc) should
+// NOT be reachable — they would show Oreugo-branded content to
+// Indian Beans customers. Also redirect the alternate auth entry
+// points (/partner/login, /partner/signup, /partner/reset-password)
+// to the fully-branded /signin page we already white-labeled.
+//
+// Deliberately NOT redirected:
+//   • /partner/dashboard — authenticated area, honours
+//     tenant_settings for branding (logo/colour) automatically.
+//   • /partner/supplier/* — authenticated supplier portal, same.
+//
+// If a specific internal page later turns up with Oreugo wording a
+// customer actually sees, add that path's redirect here or add a
+// per-tenant brand switch to that page. The "useBrand hook" refactor
+// (full brand sweep across every partner page) is parked until Indian
+// Beans is in production and we can see which pages real customers
+// actually land on.
 const OREUGO_LANDING_REDIRECTS: Record<string, string> = {
-  "/partner":          "/",
-  "/partner/":         "/",
-  "/partner/about":    "/about",
-  "/partner/cookies":  "/cookies",
-  "/partner/privacy":  "/privacy",
+  "/partner":                 "/",
+  "/partner/":                "/",
+  "/partner/about":           "/about",
+  "/partner/cookies":         "/cookies",
+  "/partner/privacy":         "/privacy",
+  "/partner/login":           "/signin",
+  "/partner/signup":          "/signin",
+  "/partner/reset-password":  "/signin",
 };
 
 export function middleware(request: NextRequest) {
