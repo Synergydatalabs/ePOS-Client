@@ -17,7 +17,11 @@ export interface CreatePaddleTransactionInput {
   currency: string;
   customerEmail: string;
   description: string;
-  successUrl: string;
+  // The URL Paddle will append `_ptxn=<txn_id>` to and bounce the customer
+  // to. In our flow this is /paddle-checkout, which loads Paddle.js and
+  // opens the overlay. successUrl inside Paddle.js's Initialize config
+  // then handles the post-payment redirect to /pay/invoice/<id>?paid=1.
+  checkoutPageUrl: string;
 }
 
 export interface PaddleTransaction {
@@ -59,7 +63,10 @@ export async function createPaddleTransaction(
       hub_type: "supplier_invoice",
     },
     checkout: {
-      url: input.successUrl,
+      // Paddle appends `?_ptxn=<txn_id>` to this URL and returns the result
+      // as data.checkout.url. We redirect the customer there; the
+      // /paddle-checkout page then loads Paddle.js and opens the overlay.
+      url: input.checkoutPageUrl,
     },
   };
 

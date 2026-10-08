@@ -111,18 +111,14 @@ export async function POST(
       console.warn("[PADDLE-START] T&C recording failed (continuing):", termsErr);
     }
 
-    // Build the Paddle hosted checkout. On completion Paddle redirects
-    // the customer here; we show the paid screen off the invoice row
-    // the webhook has (hopefully) already flipped.
-    //
-    // 2026-10-08: force the success URL onto the tenant's own custom
+    // 2026-10-08: force the checkout host onto the tenant's own custom
     // domain when one is set. Paddle enforces a per-vendor approved-
     // domains list — Indian Beans has `indianbeans.com` approved but
     // not `hub.synergydatalabs.com`, so a customer who opened the
     // payment link via the hub host would otherwise get a
     // "domain not approved" error from Paddle. Looking the host up
-    // from tenant_settings.customDomain keeps the redirect valid
-    // regardless of which host the customer loaded the pay page on.
+    // from tenant_settings.customDomain keeps the URL valid regardless
+    // of which host the customer loaded the pay page on.
     const settings = await prisma.tenantSettings.findUnique({
       where: { tenantId: link.supplierTenantId },
       select: { customDomain: true },
@@ -131,7 +127,12 @@ export async function POST(
     const originHost = tenantHost
       ? `https://${tenantHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
       : new URL(request.url).origin;
-    const successUrl = `${originHost}/pay/invoice/${invoice.id}?paid=1&via=paddle`;
+
+    // The checkout host page: /paddle-checkout loads Paddle.js and opens
+    // the overlay. The invoice id is carried as a query param so the
+    // Paddle.js successUrl can send the customer to the right invoice
+    // page after they pay. Paddle appends `?_ptxn=<txn_id>` automatically.
+    const checkoutPageUrl = `${originHost}/paddle-checkout?invoiceId=${invoice.id}`;
 
     const txn = await createPaddleTransaction({
       invoiceId: invoice.id,
@@ -139,7 +140,7 @@ export async function POST(
       currency: invoice.currency,
       customerEmail: emailRaw,
       description: `Invoice ${invoice.invoiceNumber}`,
-      successUrl,
+      checkoutPageUrl,
     });
 
     // Stash the Paddle transaction id on the invoice so the webhook can
