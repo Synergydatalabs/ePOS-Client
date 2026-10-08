@@ -37,6 +37,20 @@ export async function createPaddleTransaction(
     throw new Error("Paddle is not configured on this environment");
   }
 
+  // Zero-decimal currencies — Paddle (and ISO 4217) treats these as
+  // having no fractional unit. Our DB stores every amount × 100 for
+  // consistency, so for these currencies we divide back out before
+  // passing to Paddle, otherwise Paddle sees 100× the real amount
+  // (e.g. a ₩3,000 invoice becomes ₩300,000 on checkout).
+  const ZERO_DECIMAL_CURRENCIES = new Set([
+    "JPY", "KRW", "VND", "CLP", "ISK", "UGX", "RWF", "XOF", "XAF",
+    "PYG", "DJF", "GNF", "KMF", "MGA", "BIF", "XPF",
+  ]);
+  const upperCurrency = input.currency.toUpperCase();
+  const paddleAmount = ZERO_DECIMAL_CURRENCIES.has(upperCurrency)
+    ? Math.round(input.amountCents / 100)
+    : Math.round(input.amountCents);
+
   const body = {
     items: [
       {
@@ -46,8 +60,8 @@ export async function createPaddleTransaction(
           product_id: config.productId,
           unit_price: {
             // Paddle amount is a string in the smallest currency unit.
-            amount: String(Math.round(input.amountCents)),
-            currency_code: input.currency.toUpperCase(),
+            amount: String(paddleAmount),
+            currency_code: upperCurrency,
           },
           billing_cycle: null, // one-time charge, not a subscription
           trial_period: null,
