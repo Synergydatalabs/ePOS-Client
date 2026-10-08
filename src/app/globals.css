@@ -545,3 +545,14 @@ input::placeholder, textarea::placeholder {
 .spinner {
   @apply animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600;
 }
+
+/* 2026-10-08: vendor-mode pay page font stack. Was Plus Jakarta Sans
+   via next/font/google; replaced with system-font stack when the font
+   fetch at build time became unreliable from EC2. Reads similarly on
+   macOS/iOS, Windows, and Linux without a network dependency. */
+.font-vendor-stack {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI",
+    "Inter", "Hanken Grotesk", system-ui, Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  letter-spacing: -0.012em;
+}

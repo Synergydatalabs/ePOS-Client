@@ -49,17 +49,16 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 
-// #6t: Plus Jakarta Sans — the vendor mode's typeface per the UI expert
-// handoff brand guide. Loaded at module scope (Next.js requirement) with
-// swap so the page paints instantly and the font layers in when ready.
-// Weights 400–800 cover body, semi-bold labels, and the bold total lines.
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-});
+// 2026-10-08: originally loaded Plus_Jakarta_Sans via next/font/google
+// but that fails at build time whenever fonts.googleapis.com isn't
+// reachable from the build host (common on EC2 behind corporate network).
+// Swapped for a system-font stack that reads similarly on common
+// platforms — Apple SF Pro on macOS/iOS, Segoe UI on Windows, Inter on
+// Linux. No build-time network dependency, same visual intent.
+const jakarta = {
+  className: "font-vendor-stack",
+};
 
 interface Line {
   id: string;
