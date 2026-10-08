@@ -66,9 +66,64 @@ function getPartnerRewritePath(pathname: string): string {
   return `/partner${pathname}`;
 }
 
+// 2026-10-07 — Indian Beans white-label host.
+// Serves the static landing pages from /public/sites/indianbeans/
+// and redirects Oreugo marketing paths. MUST run before the
+// standard-domain branch, which otherwise sends every unauth'd
+// request to /signin?callbackUrl=... (the bug Indian Beans visitors
+// were hitting on /features, /pricing, etc).
+const INDIANBEANS_HOSTS = new Set(["indianbeans.com", "www.indianbeans.com"]);
+const INDIANBEANS_LANDING_PAGES = new Set([
+  "/", "/index", "/about", "/features", "/pricing", "/solutions",
+  "/integrations", "/contact", "/faq", "/privacy", "/terms",
+  "/refunds", "/cookies", "/security", "/404",
+]);
+const INDIANBEANS_STATIC_FILES = new Set(["/robots.txt", "/sitemap.xml", "/favicon.ico"]);
+const INDIANBEANS_REDIRECTS: Record<string, string> = {
+  "/partner":                 "/",
+  "/partner/":                "/",
+  "/partner/about":           "/about",
+  "/partner/cookies":         "/cookies",
+  "/partner/privacy":         "/privacy",
+  "/partner/login":           "/signin",
+  "/partner/signup":          "/signin",
+  "/partner/reset-password":  "/signin",
+};
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hostname = request.headers.get("host") || "";
+  const hostOnly = hostname.split(":")[0].toLowerCase();
+
+  // ============================================
+  // Indian Beans (white-label apex) — handled before everything else.
+  // Rewrites marketing paths to the static site; falls through for
+  // app routes (/signin, /pay/*, /api/*, /dashboard/*, etc) so the
+  // normal flow still works.
+  // ============================================
+  if (INDIANBEANS_HOSTS.has(hostOnly)) {
+    // 1) Oreugo-exclusive paths → redirect to tenant equivalent
+    const redirectTo = INDIANBEANS_REDIRECTS[pathname];
+    if (redirectTo) {
+      return NextResponse.redirect(new URL(redirectTo, request.url), 308);
+    }
+    // 2) Known landing page → rewrite to the HTML file under /sites/indianbeans/
+    if (INDIANBEANS_LANDING_PAGES.has(pathname)) {
+      const target = pathname === "/" ? "/index.html" : `${pathname}.html`;
+      return NextResponse.rewrite(new URL(`/sites/indianbeans${target}`, request.url));
+    }
+    if (pathname.endsWith(".html") && INDIANBEANS_LANDING_PAGES.has(pathname.replace(/\.html$/, ""))) {
+      return NextResponse.rewrite(new URL(`/sites/indianbeans${pathname}`, request.url));
+    }
+    // 3) Static assets under the landing site
+    if (pathname.startsWith("/assets/") || INDIANBEANS_STATIC_FILES.has(pathname)) {
+      return NextResponse.rewrite(new URL(`/sites/indianbeans${pathname}`, request.url));
+    }
+    // 4) Everything else — API, /signin, /pay, /l/, /dashboard, etc —
+    //    fall through to the existing routes so auth + payment flows
+    //    keep working on indianbeans.com.
+    return NextResponse.next();
+  }
 
   // ============================================
   // Synergy Data Labs / hub host — redirect the Oreugo landing away.
