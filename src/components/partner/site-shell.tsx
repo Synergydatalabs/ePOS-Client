@@ -60,6 +60,11 @@ interface ShellChrome {
   contactPhone: string | null;
   companyName: string;
   socials: Array<{ href: string; icon: string; label: string }>;
+  // 2026-10-07: per-tenant top nav items. Each entry is [label, href].
+  // The href can be an anchor (#features) OR an absolute path (/features)
+  // for tenants whose landing is multi-page rather than one-page scroll.
+  // Omit / empty = render no nav links (brand + CTA only).
+  navItems?: Array<[string, string]>;
 }
 
 const OREUGO_CHROME: ShellChrome = {
@@ -108,6 +113,17 @@ const INDIANBEANS_CHROME: ShellChrome = {
   contactPhone: null,
   companyName: "Indian Beans",
   socials: [],
+  // Indian Beans landing is multi-page (unlike Oreugo's one-page
+  // scroll), so link to the actual pages served from
+  // /public/sites/indianbeans/ via the middleware.
+  navItems: [
+    ["Features", "/features"],
+    ["Solutions", "/solutions"],
+    ["Integrations", "/integrations"],
+    ["Pricing", "/pricing"],
+    ["About", "/about"],
+    ["Contact", "/contact"],
+  ],
 };
 
 const BRAND_FONT_STACK = "'Helvetica Now Display', Helvetica, Arial, sans-serif";
@@ -256,13 +272,13 @@ export default function PartnerSiteShell({ children }: { children: React.ReactNo
             </Link>
 
             <div className="hidden md:flex items-center gap-10">
-              {[
+              {(chrome.navItems ?? [
                 ["Features", `${anchorPrefix}#features`],
                 ["Solutions", `${anchorPrefix}#solutions`],
                 ["Hardware", `${anchorPrefix}#hardware`],
                 ["Pricing", `${anchorPrefix}#pricing`],
                 ["Contact", `${anchorPrefix}#contact`],
-              ].map(([label, href]) => (
+              ]).map(([label, href]) => (
                 <Link
                   key={label}
                   href={href}
@@ -309,11 +325,13 @@ export default function PartnerSiteShell({ children }: { children: React.ReactNo
             style={{ backgroundColor: chrome.headerBg, borderColor: "rgba(255,255,255,0.08)" }}
           >
             {[
-              ["Features", `${anchorPrefix}#features`],
-              ["Solutions", `${anchorPrefix}#solutions`],
-              ["Hardware", `${anchorPrefix}#hardware`],
-              ["Pricing", `${anchorPrefix}#pricing`],
-              ["Contact", `${anchorPrefix}#contact`],
+              ...(chrome.navItems ?? [
+                ["Features", `${anchorPrefix}#features`],
+                ["Solutions", `${anchorPrefix}#solutions`],
+                ["Hardware", `${anchorPrefix}#hardware`],
+                ["Pricing", `${anchorPrefix}#pricing`],
+                ["Contact", `${anchorPrefix}#contact`],
+              ]),
               ["Login", routes.login],
               ["Sign Up", routes.signup],
             ].map(([label, href]) => (
