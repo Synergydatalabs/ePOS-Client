@@ -79,15 +79,20 @@ const INDIANBEANS_LANDING_PAGES = new Set([
   "/refunds", "/cookies", "/security", "/404",
 ]);
 const INDIANBEANS_STATIC_FILES = new Set(["/robots.txt", "/sitemap.xml", "/favicon.ico"]);
+// Oreugo-exclusive marketing/legal paths. Only these redirect — the
+// auth routes under /partner (/partner/login, /partner/signup,
+// /partner/reset-password) MUST remain accessible on indianbeans.com
+// because that's where the partner_token cookie gets set. The
+// supplier portal (where payment links are generated) relies on
+// partner_token, and /signin uses a different NextAuth session that
+// can't satisfy the portal's auth check. So auth stays on /partner/*
+// even if the chrome there is Oreugo-flavoured for now.
 const INDIANBEANS_REDIRECTS: Record<string, string> = {
-  "/partner":                 "/",
-  "/partner/":                "/",
-  "/partner/about":           "/about",
-  "/partner/cookies":         "/cookies",
-  "/partner/privacy":         "/privacy",
-  "/partner/login":           "/signin",
-  "/partner/signup":          "/signin",
-  "/partner/reset-password":  "/signin",
+  "/partner":          "/",
+  "/partner/":         "/",
+  "/partner/about":    "/about",
+  "/partner/cookies":  "/cookies",
+  "/partner/privacy":  "/privacy",
 };
 
 export async function middleware(request: NextRequest) {
