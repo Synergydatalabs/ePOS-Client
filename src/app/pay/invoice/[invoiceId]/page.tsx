@@ -967,7 +967,7 @@ export default function PayInvoicePage() {
                 <strong>Payment temporarily unavailable</strong>
                 <p className="mt-1 text-xs">
                   Online payment isn&rsquo;t configured on this invoice yet.
-                  Please contact {invoice.supplier.displayName} for an alternative
+                  Please contact {supplier.displayName} for an alternative
                   way to pay.
                 </p>
               </div>

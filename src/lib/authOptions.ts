@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import prisma from "./prisma";
 import { signIn as cognitoSignIn } from "./cognito";
+import bcrypt from "bcryptjs";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -24,10 +25,16 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email and password are required");
         }
 
+        const emailLower = credentials.email.trim().toLowerCase();
+
+        // 2026-10-07: try Cognito first (the primary auth for hub/iTap
+        // users), then fall back to local DB bcrypt (for white-label
+        // tenants like Indian Beans that are admin-provisioned via
+        // SQL + password_hash on the membership). This gives /signin
+        // a single pane of glass across both auth models.
         try {
           console.log(`🔐 [iTAP] Sign in attempt: ${credentials.email}`);
 
-          // Authenticate with Cognito directly
           const result = await cognitoSignIn({
             email: credentials.email,
             password: credentials.password,
@@ -35,35 +42,74 @@ export const authOptions: NextAuthOptions = {
             mfaType: (credentials.mfaType as "TOTP" | "SMS") || undefined,
           });
 
-          // Handle MFA requirement
           if (result.needsMfa) {
             console.log(`🔐 [iTAP] MFA required for: ${credentials.email}`);
             throw new Error("MFA_REQUIRED");
           }
 
-          if (!result.success) {
-            throw new Error(result.error || "Authentication failed");
+          if (result.success && result.user && result.tokens) {
+            console.log(`✅ [iTAP] Sign in successful (Cognito): ${credentials.email}`);
+            return {
+              id: result.user.sub,
+              email: result.user.email,
+              name: result.user.name,
+              sub: result.user.sub,
+              accessToken: result.tokens.accessToken,
+              idToken: result.tokens.idToken,
+              refreshToken: result.tokens.refreshToken,
+            };
           }
 
-          if (!result.user || !result.tokens) {
-            throw new Error("Invalid response from authentication");
+          // Cognito didn't authenticate — fall through to local DB.
+          console.log(`[iTAP] Cognito auth failed (${result.error}); trying local DB fallback`);
+        } catch (cognitoErr: any) {
+          // MFA bubbles up as-is; anything else is a Cognito-side
+          // failure (user not in Cognito, wrong pw there, etc). Fall
+          // through to local DB — the user may be a local-only
+          // account.
+          if (cognitoErr?.message === "MFA_REQUIRED") throw cognitoErr;
+          console.log(`[iTAP] Cognito threw (${cognitoErr.message}); trying local DB fallback`);
+        }
+
+        // Local DB fallback — bcrypt compare against membership.password_hash.
+        try {
+          const member = await prisma.membership.findFirst({
+            where: {
+              email: { equals: emailLower, mode: "insensitive" },
+              status: "ACTIVE",
+              passwordHash: { not: null },
+            },
+            select: {
+              id: true,
+              userSub: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              passwordHash: true,
+              tenantId: true,
+            },
+          });
+
+          if (!member || !member.passwordHash) {
+            throw new Error("Invalid email or password");
           }
 
-          console.log(`✅ [iTAP] Sign in successful: ${credentials.email}`);
+          const ok = await bcrypt.compare(credentials.password, member.passwordHash);
+          if (!ok) {
+            throw new Error("Invalid email or password");
+          }
 
-          // Return user object for NextAuth
+          console.log(`✅ [iTAP] Sign in successful (local DB): ${member.email}`);
+          const displayName = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email;
           return {
-            id: result.user.sub,
-            email: result.user.email,
-            name: result.user.name,
-            sub: result.user.sub,
-            accessToken: result.tokens.accessToken,
-            idToken: result.tokens.idToken,
-            refreshToken: result.tokens.refreshToken,
+            id: member.userSub,
+            email: member.email,
+            name: displayName,
+            sub: member.userSub,
           };
-        } catch (error: any) {
-          console.error("[iTAP Auth] Cognito auth error:", error.message);
-          throw error;
+        } catch (localErr: any) {
+          console.error("[iTAP Auth] local DB auth failed:", localErr.message);
+          throw new Error("Invalid email or password");
         }
       },
     }),
