@@ -122,8 +122,24 @@ export async function POST(
     // Build the Paddle hosted checkout. On completion Paddle redirects
     // the customer here; we show the paid screen off the invoice row
     // the webhook has (hopefully) already flipped.
-    const origin = new URL(request.url).origin;
-    const successUrl = `${origin}/pay/invoice/${invoice.id}?paid=1&via=paddle`;
+    //
+    // 2026-10-08: force the success URL onto the tenant's own custom
+    // domain when one is set. Paddle enforces a per-vendor approved-
+    // domains list — Indian Beans has `indianbeans.com` approved but
+    // not `hub.synergydatalabs.com`, so a customer who opened the
+    // payment link via the hub host would otherwise get a
+    // "domain not approved" error from Paddle. Looking the host up
+    // from tenant_settings.customDomain keeps the redirect valid
+    // regardless of which host the customer loaded the pay page on.
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId: link.supplierTenantId },
+      select: { customDomain: true },
+    });
+    const tenantHost = settings?.customDomain?.trim();
+    const originHost = tenantHost
+      ? `https://${tenantHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+      : new URL(request.url).origin;
+    const successUrl = `${originHost}/pay/invoice/${invoice.id}?paid=1&via=paddle`;
 
     const txn = await createPaddleTransaction({
       invoiceId: invoice.id,
