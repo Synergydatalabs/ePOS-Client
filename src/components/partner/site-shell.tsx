@@ -258,6 +258,16 @@ export default function PartnerSiteShell({ children }: { children: React.ReactNo
     }
     return ITAP_CHROME;
   });
+  // 2026-10-08: derive the HostVariant for the current render so the nav
+  // can swap wording / spacing per tenant without reading the paint. Needed
+  // because Indian Beans wants "Sign up" + a vertical divider before Login
+  // to match its landing nav, while Oreugo keeps "Get Started" / no divider.
+  const [variant] = useState<HostVariant>(() => {
+    if (typeof window !== "undefined") {
+      return hostVariant(window.location.hostname);
+    }
+    return "hub";
+  });
 
   // Cookie consent (must be declared before the early return so hook order
   // stays stable across the iTap / Oreugo render branches).
@@ -334,11 +344,22 @@ export default function PartnerSiteShell({ children }: { children: React.ReactNo
             </div>
 
             <div className="flex items-center gap-5">
-              {/* PHASE 7b-fix10: Login flipped to white + bold + subtle
+              {/* 2026-10-08: Indian Beans parity — on indianbeans.com the
+                  static landing nav uses "Sign up" with a vertical divider
+                  before Login (nav-auth-sep in /sites/indianbeans/assets/
+                  style.css). The partner shell was still saying "Get
+                  Started" with no divider, so the two navigations looked
+                  mismatched when the customer moved from the landing to
+                  login/signup. Mirror that treatment here when the host
+                  is Indian Beans; Oreugo and hub keep their original
+                  wording + spacing.
+                  PHASE 7b-fix10: Login flipped to white + bold + subtle
                   underline (matches the landing page treatment). */}
               <Link
                 href={routes.login}
-                className="hidden sm:inline-block text-base font-semibold tracking-wide text-white underline decoration-2 decoration-white/30 underline-offset-[6px] hover:decoration-white transition-all"
+                className={`hidden sm:inline-block text-base font-semibold tracking-wide text-white underline decoration-2 decoration-white/30 underline-offset-[6px] hover:decoration-white transition-all ${
+                  variant === "indianbeans" ? "ml-4 pl-6 border-l border-white/20" : ""
+                }`}
               >
                 Login
               </Link>
@@ -347,7 +368,7 @@ export default function PartnerSiteShell({ children }: { children: React.ReactNo
                 className="leaf-button px-8 py-3 text-base font-semibold text-white hover:opacity-90 transition-opacity shadow-md"
                 style={{ backgroundColor: chrome.ctaBg }}
               >
-                Get Started
+                {variant === "indianbeans" ? "Sign up" : "Get Started"}
               </Link>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
