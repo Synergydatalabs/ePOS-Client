@@ -47,7 +47,7 @@ import {
 // =============================================================================
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 
@@ -157,6 +157,13 @@ interface Invoice {
 export default function PayInvoicePage() {
   const params = useParams<{ invoiceId: string }>();
   const invoiceId = params?.invoiceId;
+  // 2026-10-08: when Paddle redirects back with ?paid=1, the invoice may
+  // still be PENDING for 1-5s until the Paddle webhook flips it to PAID.
+  // We detect the flag here, show a "Confirming payment..." state instead
+  // of the pay block, and poll the invoice every 2s until it goes PAID.
+  const searchParams = useSearchParams();
+  const paidQueryFlag = searchParams?.get("paid") === "1";
+  const paidVia = searchParams?.get("via") || null;
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [supplier, setSupplier] = useState<Supplier | null>(null);
@@ -243,6 +250,25 @@ export default function PayInvoicePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 2026-10-08: Paddle redirect-back polling. The browser gets ?paid=1
+  // immediately but the webhook (which flips the invoice to PAID) can
+  // take 1-5s. Without polling the customer sees a "payment unavailable"
+  // notice despite having just paid. Poll every 2s, stop as soon as the
+  // invoice flips PAID, give up after 60s (something's wrong).
+  useEffect(() => {
+    if (!paidQueryFlag || !invoice) return;
+    if (invoice.paymentStatus === "PAID") return;
+    const started = Date.now();
+    const t = setInterval(() => {
+      if (Date.now() - started > 60_000) {
+        clearInterval(t);
+        return;
+      }
+      load();
+    }, 2000);
+    return () => clearInterval(t);
+  }, [paidQueryFlag, invoice, load]);
 
   const money = (cents: number, ccy = invoice?.currency || "CAD") =>
     `${ccy} ${(cents / 100).toLocaleString(undefined, {
@@ -956,21 +982,39 @@ export default function PayInvoicePage() {
               // Telegram "received a payment through Mock" without
               // actually being paid.
               //
-              // Replaced with a clear "payment unavailable" notice.
-              // The customer should contact the supplier to be given
-              // a different link once the supplier has a processor
-              // (Stripe, Paddle, etc.) assigned.
-              <div
-                className="mt-5 p-4 rounded-xl border-2 text-sm"
-                style={{ borderColor: "#F59E0B", background: "#FFFBEB", color: "#78350F" }}
-              >
-                <strong>Payment temporarily unavailable</strong>
-                <p className="mt-1 text-xs">
-                  Online payment isn&rsquo;t configured on this invoice yet.
-                  Please contact {supplier.displayName} for an alternative
-                  way to pay.
-                </p>
-              </div>
+              // Two states now:
+              //  - Fresh redirect-back from Paddle (?paid=1&via=paddle):
+              //    the customer DID pay but the webhook hasn't flipped
+              //    the invoice yet. Show a "confirming" spinner — the
+              //    polling effect refreshes until the invoice goes PAID.
+              //  - Everything else: clear "payment unavailable" notice.
+              paidQueryFlag ? (
+                <div
+                  className="mt-5 p-5 rounded-xl border-2 text-sm text-center"
+                  style={{ borderColor: `${primary}66`, background: `${primary}08`, color: ink }}
+                >
+                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-full mb-3" style={{ backgroundColor: `${primary}20` }}>
+                    <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: primary }} />
+                  </div>
+                  <p className="font-semibold">Confirming your payment…</p>
+                  <p className="mt-1 text-xs opacity-80">
+                    {paidVia === "paddle" ? "Paddle" : "Your processor"} is finalising the transaction.
+                    This page will update automatically — usually within a few seconds.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="mt-5 p-4 rounded-xl border-2 text-sm"
+                  style={{ borderColor: "#F59E0B", background: "#FFFBEB", color: "#78350F" }}
+                >
+                  <strong>Payment temporarily unavailable</strong>
+                  <p className="mt-1 text-xs">
+                    Online payment isn&rsquo;t configured on this invoice yet.
+                    Please contact {supplier.displayName} for an alternative
+                    way to pay.
+                  </p>
+                </div>
+              )
             )}
 
             {vendorTheme ? (
