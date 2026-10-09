@@ -285,7 +285,24 @@ export async function POST(request: NextRequest) {
   //     KakaoPay/PayPal/Alipay button + QR + success redirect. Returning
   //     /l/<slug> keeps the API caller + customer away from a Stripe-
   //     only pay page they'd just bounce off.
-  const origin = resolvePublicOrigin(request);
+  // 2026-10-09: use the request's own host, not NEXT_PUBLIC_APP_URL.
+  // Partners on white-label tenants (indianbeans.com, oreugo.ca, …) call
+  // the API via their own apex. The URLs we return — checkout_url,
+  // embed_url, qr_data_url contents — must point back at THAT host so
+  // the iframe source + CORS behave consistently. resolvePublicOrigin
+  // forces everything through hub.synergydatalabs.com, which breaks the
+  // white-label embed story (iframe would load the wrong host and the
+  // iframe-ancestors CSP would mismatch). Honour x-forwarded-host first
+  // (set by nginx/ALB), fall back to Host header, and only use the env
+  // canonical origin as a last resort.
+  const fwdHost = request.headers.get("x-forwarded-host");
+  const fwdProto = request.headers.get("x-forwarded-proto") || "https";
+  const hostHeader = request.headers.get("host");
+  const origin = fwdHost
+    ? `${fwdProto}://${fwdHost}`
+    : hostHeader
+      ? `${fwdProto}://${hostHeader}`
+      : resolvePublicOrigin(request);
   let invoiceId: string | null = null;
   let invoiceCreatedAt: string;
   let checkoutUrl: string;
