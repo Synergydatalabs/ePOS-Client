@@ -29,7 +29,16 @@
 //     "webhook_secret":   "<partner-supplied HMAC secret; optional>",
 //     "webhook_template": "{\"id\":\"{{event.id}}\",\"amount\":{{payment.amount}}}",
 //     "webhook_events":   ["payment.succeeded", "payment.failed"],
-//     "metadata": { "order_id": "42", "sku": "abc" }  // echoed via {{metadata.*}}
+//     "metadata": { "order_id": "42", "sku": "abc" },  // echoed via {{metadata.*}}
+//     // 2026-10-09:
+//     "payment_methods": ["kakao_pay"],   // optional. ["card"] (default = Stripe)
+//                                          //  or Paddle methods like
+//                                          //  ["kakao_pay"], ["paypal"], ["alipay"].
+//                                          //  Paddle methods return the /l/<slug>
+//                                          //  URL (where the Paddle button lives).
+//     "qr": true                           // optional. true → include a
+//                                          //  qr_data_url PNG of checkout_url
+//                                          //  in the response for direct embed.
 //   }
 //
 // Response 201:
@@ -70,7 +79,15 @@ interface PaymentRequestBody {
   webhook_template?: unknown;
   webhook_events?: unknown;
   metadata?: unknown;
+  // 2026-10-09 — Paddle + QR extensions for Korean / KakaoPay integrations.
+  payment_methods?: unknown; // e.g. ["card"] or ["kakao_pay", "card"]
+  qr?: unknown;              // boolean; include qr_data_url in response
 }
+
+// Payment methods that route through Paddle instead of Stripe. Anything in
+// this set makes the API return the /l/<slug> URL (where our Paddle flow
+// lives) instead of the Stripe-only /pay/invoice/<id> URL.
+const PADDLE_METHODS = new Set(["kakao_pay", "paddle", "paypal", "alipay"]);
 
 function badRequest(message: string, field?: string) {
   return NextResponse.json(
@@ -164,6 +181,20 @@ export async function POST(request: NextRequest) {
     if (filtered.length > 0) webhookEvents = filtered;
   }
 
+  // 2026-10-09: payment methods + QR option. Both are optional; omitting
+  // keeps the pre-existing Stripe-card default behaviour so existing API
+  // callers see no change. When any Paddle-routed method is listed we
+  // return the /l/<slug> URL (the page where the Paddle KakaoPay/PayPal/
+  // Alipay button lives) instead of /pay/invoice/<id> (Stripe-only).
+  const paymentMethods: string[] = Array.isArray(raw.payment_methods)
+    ? raw.payment_methods
+        .filter((m): m is string => typeof m === "string")
+        .map((m) => m.toLowerCase().trim())
+        .filter(Boolean)
+    : [];
+  const wantsPaddleRoute = paymentMethods.some((m) => PADDLE_METHODS.has(m));
+  const wantsQr = raw.qr === true;
+
   const metadata =
     raw.metadata && typeof raw.metadata === "object" && !Array.isArray(raw.metadata)
       ? (raw.metadata as Record<string, unknown>)
@@ -236,37 +267,83 @@ export async function POST(request: NextRequest) {
     data: { apiGenerated: true, createdViaApiKeyId: apiKeyId },
   });
 
-  // 6) Spin the invoice off the link, exactly like a public /l/[slug]
-  // click would. This bumps the link's currentUses to 1, which also
-  // makes it "at_capacity" for any subsequent access.
-  const invoice = await createInvoiceFromLink({
-    slug: link.shortSlug,
-    quantity: 1,
-    customer: {
-      email: customerEmail,
-      name: customerName,
-      phone: customerPhone,
-      company: customerCompany,
-    },
-    attributionOverride: typeof metadata.partner_ref === "string" ? metadata.partner_ref : null,
-  });
-
+  // 6) Spin the invoice (default Stripe-card path) OR skip it (Paddle
+  // path — the invoice is minted by /l/<slug>/paddle-start when the
+  // customer actually clicks the Paddle button).
+  //
+  // Why the two paths:
+  //   - Stripe: pre-creating the invoice + sending its /pay/invoice/<id>
+  //     URL is simpler for card UX. Customer lands, Stripe Elements
+  //     mounts, done.
+  //   - Paddle: our Paddle flow lives on /l/<slug>, which already handles
+  //     KakaoPay/PayPal/Alipay button + QR + success redirect. Returning
+  //     /l/<slug> keeps the API caller + customer away from a Stripe-
+  //     only pay page they'd just bounce off.
   const origin = resolvePublicOrigin(request);
-  const checkoutUrl = `${origin}/pay/invoice/${invoice.id}`;
-  // Phase I #9 (2026-09-19): also return an embed_url pointing at the
-  // bare-bones /pay/embed page — designed to be dropped into a
-  // partner's site via <iframe src="...">. Same underlying invoice.
-  const embedUrl = `${origin}/pay/embed/${invoice.id}`;
+  let invoiceId: string | null = null;
+  let invoiceCreatedAt: string;
+  let checkoutUrl: string;
+  let embedUrl: string | null = null;
+
+  if (wantsPaddleRoute) {
+    invoiceCreatedAt = link.createdAt.toISOString();
+    checkoutUrl = `${origin}/l/${link.shortSlug}`;
+    // Embed URL doesn't apply to the Paddle flow yet (invoice doesn't
+    // exist until the customer clicks). Omit — API clients just use
+    // checkout_url + an <iframe> around it if needed.
+  } else {
+    const invoice = await createInvoiceFromLink({
+      slug: link.shortSlug,
+      quantity: 1,
+      customer: {
+        email: customerEmail,
+        name: customerName,
+        phone: customerPhone,
+        company: customerCompany,
+      },
+      attributionOverride: typeof metadata.partner_ref === "string" ? metadata.partner_ref : null,
+    });
+    invoiceId = invoice.id;
+    invoiceCreatedAt = invoice.createdAt.toISOString();
+    checkoutUrl = `${origin}/pay/invoice/${invoice.id}`;
+    // Phase I #9 (2026-09-19): also return an embed_url pointing at the
+    // bare-bones /pay/embed page — designed to be dropped into a
+    // partner's site via <iframe src="...">. Same underlying invoice.
+    embedUrl = `${origin}/pay/embed/${invoice.id}`;
+  }
+
+  // 2026-10-09: QR code generation. Partner opts in with { qr: true }.
+  // 400x400 PNG as a data URL — small enough to inline in an email,
+  // large enough to scan from a phone at normal reading distance.
+  // Skip silently on error — the primary response (checkout_url) still
+  // works, QR is a convenience.
+  let qrDataUrl: string | null = null;
+  if (wantsQr) {
+    try {
+      const QRCode = await import("qrcode");
+      qrDataUrl = await QRCode.toDataURL(checkoutUrl, {
+        width: 400,
+        margin: 2,
+        errorCorrectionLevel: "M",
+      });
+    } catch (err) {
+      console.warn("[public-payments] QR generation failed:", (err as Error).message);
+    }
+  }
 
   return NextResponse.json(
     {
-      id: invoice.id,
+      id: invoiceId ?? link.id,
       status: "created",
       amount,
       currency: currency.toLowerCase(),
       checkout_url: checkoutUrl,
-      embed_url: embedUrl,
-      created_at: invoice.createdAt.toISOString(),
+      ...(embedUrl ? { embed_url: embedUrl } : {}),
+      ...(qrDataUrl ? { qr_data_url: qrDataUrl } : {}),
+      ...(wantsPaddleRoute
+        ? { payment_methods: paymentMethods, link_slug: link.shortSlug }
+        : {}),
+      created_at: invoiceCreatedAt,
     },
     { status: 201, headers: PUBLIC_API_CORS_HEADERS }
   );
