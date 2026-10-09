@@ -38,6 +38,17 @@ export default function ApiKeysPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [copied, setCopied] = useState(false);
+  // 2026-10-09: docs examples were hardcoded to hub.synergydatalabs.com,
+  // which is wrong on white-label tenants (indianbeans.com etc). Derive
+  // the base URL from the browser's current origin so a Korean merchant
+  // on indianbeans.com sees the indianbeans.com host in every example.
+  // Falls back to hub.synergydatalabs.com during SSR (first paint only).
+  const [apiBase, setApiBase] = useState<string>("https://hub.synergydatalabs.com");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setApiBase(window.location.origin);
+    }
+  }, []);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -157,7 +168,7 @@ export default function ApiKeysPage() {
           </p>
           <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
 {`// Get publishable key
-const cfg = await fetch('https://hub.synergydatalabs.com/api/public/v1/config',
+const cfg = await fetch('${apiBase}/api/public/v1/config',
   { headers: { Authorization: 'Bearer <YOUR_KEY>' }}).then(r => r.json());
 const stripe = Stripe(cfg.publishable_key);
 
@@ -177,7 +188,7 @@ const { paymentMethod } = await stripe.createPaymentMethod({
             Step 2 — your backend forwards the token to /charge:
           </p>
           <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
-{`curl -X POST https://hub.synergydatalabs.com/api/public/v1/payments/charge \\
+{`curl -X POST ${apiBase}/api/public/v1/payments/charge \\
   -H "Authorization: Bearer <YOUR_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -207,7 +218,7 @@ const { paymentMethod } = await stripe.createPaymentMethod({
             Step 1 — your backend calls this to get a <code className="bg-white/70 rounded px-1">client_secret</code>:
           </p>
           <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
-{`curl -X POST https://hub.synergydatalabs.com/api/public/v1/payment-intents \\
+{`curl -X POST ${apiBase}/api/public/v1/payment-intents \\
   -H "Authorization: Bearer <YOUR_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -254,7 +265,7 @@ const { paymentMethod } = await stripe.createPaymentMethod({
             Record a payment (your site charged the card, we just log it)
           </h2>
           <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
-{`curl -X POST https://hub.synergydatalabs.com/api/public/v1/payments/record \\
+{`curl -X POST ${apiBase}/api/public/v1/payments/record \\
   -H "Authorization: Bearer <YOUR_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -281,7 +292,7 @@ const { paymentMethod } = await stripe.createPaymentMethod({
             Hosted checkout (customer visits our page to pay via Stripe)
           </h2>
           <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
-{`curl -X POST https://hub.synergydatalabs.com/api/public/v1/payments \\
+{`curl -X POST ${apiBase}/api/public/v1/payments \\
   -H "Authorization: Bearer <YOUR_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -300,6 +311,44 @@ const { paymentMethod } = await stripe.createPaymentMethod({
             Returns <code className="bg-white/70 rounded px-1">checkout_url</code> — redirect the customer there. On
             success or failure we&apos;ll POST your <code className="bg-white/70 rounded px-1">webhook_url</code> with
             the rendered template + HMAC signature.
+          </p>
+        </div>
+
+        {/* 2026-10-09: KakaoPay / Paddle route — for Korean and other
+            regional-method merchants. Returns a /l/<slug> URL (not /pay/
+            invoice/<id>) because the Paddle button lives on the payment
+            link page, and optionally a qr_data_url PNG to inline-share. */}
+        <div className="border-t border-indigo-200 pt-4">
+          <h2 className="text-sm font-bold text-indigo-900 mb-2 flex items-center gap-2">
+            <Icon icon="solar:qr-code-bold" className="w-4 h-4" />
+            KakaoPay / PayPal / Alipay (via Paddle) — with QR
+          </h2>
+          <p className="text-xs text-indigo-800/80 mb-2">
+            Set <code className="bg-white/70 rounded px-1">payment_methods</code> to any
+            of <code className="bg-white/70 rounded px-1">kakao_pay</code>, <code className="bg-white/70 rounded px-1">paypal</code>, <code className="bg-white/70 rounded px-1">alipay</code>, <code className="bg-white/70 rounded px-1">paddle</code>.
+            Set <code className="bg-white/70 rounded px-1">qr: true</code> to also receive a
+            PNG QR of the checkout URL (base64 data URL — inline it in an email,
+            SMS or page):
+          </p>
+          <pre className="text-xs text-indigo-900 bg-white/70 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
+{`curl -X POST ${apiBase}/api/public/v1/payments \\
+  -H "Authorization: Bearer <YOUR_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "amount": 3000, "currency": "KRW",
+    "payment_methods": ["kakao_pay"],
+    "qr": true,
+    "customer": { "email": "buyer@korean-site.co.kr", "name": "홍길동" },
+    "description": "Order #12345",
+    "webhook_url": "https://your-site.co.kr/hooks/paid",
+    "metadata": { "order_id": "12345" }
+  }'`}
+          </pre>
+          <p className="text-xs text-indigo-800/80 mt-2">
+            Returns <code className="bg-white/70 rounded px-1">checkout_url</code>, <code className="bg-white/70 rounded px-1">qr_data_url</code>, and <code className="bg-white/70 rounded px-1">link_slug</code>.
+            Email the QR to your customer — they scan it with the KakaoPay app
+            on their Korean phone, approve the charge, and we POST your webhook
+            when the payment settles.
           </p>
         </div>
       </div>
