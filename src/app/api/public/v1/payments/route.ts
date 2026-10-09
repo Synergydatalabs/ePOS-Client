@@ -221,8 +221,14 @@ export async function POST(request: NextRequest) {
       { status: 403, headers: PUBLIC_API_CORS_HEADERS }
     );
   }
+  // 2026-10-09: the CARD-processor requirement only applies to the Stripe
+  // default path, where per-tenant Stripe creds are required to mint a
+  // PaymentIntent. The Paddle route (payment_methods includes kakao_pay /
+  // paddle / paypal / alipay) uses platform-wide env credentials
+  // (PADDLE_API_KEY), so a tenant can accept Paddle payments without any
+  // per-tenant processor assignment. Skip the guard for that path.
   const hasCardProcessor = tenant.tenantPaymentProviders.some((p) => p.capability === "CARD");
-  if (!hasCardProcessor) {
+  if (!hasCardProcessor && !wantsPaddleRoute) {
     return NextResponse.json(
       {
         error: {
