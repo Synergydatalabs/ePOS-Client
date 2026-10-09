@@ -45,6 +45,9 @@ function PaddleCheckoutInner() {
   const searchParams = useSearchParams();
   const txnId = searchParams?.get("_ptxn") || null;
   const invoiceId = searchParams?.get("invoiceId") || null;
+  // 2026-10-09: propagate iframe-embed flag to the post-payment URL so
+  // /pay/invoice/<id> knows to postMessage the parent window on paid.
+  const embedMode = searchParams?.get("embed") === "1";
   const [state, setState] = useState<"loading" | "opening" | "ready" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
@@ -83,7 +86,7 @@ function PaddleCheckoutInner() {
             displayMode: "overlay",
             theme: "light",
             variant: "one-page",
-            successUrl: `${window.location.origin}/pay/invoice/${invoiceId}?paid=1&via=paddle`,
+            successUrl: `${window.location.origin}/pay/invoice/${invoiceId}?paid=1&via=paddle${embedMode ? "&embed=1" : ""}`,
           },
         },
         eventCallback: (event: { name?: string }) => {

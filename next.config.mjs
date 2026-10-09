@@ -55,6 +55,42 @@ const nextConfig = {
           },
         ],
       },
+      // 2026-10-09: iframe-embed support for the public pay / embed routes.
+      // Partners (e.g. Korean merchants embedding our KakaoPay checkout on
+      // their own site) need these pages served from indianbeans.com inside
+      // an <iframe> on their domain. Default Next.js sends X-Frame-Options:
+      // SAMEORIGIN which blocks cross-origin embedding — override to allow
+      // ANY ancestor. (frame-ancestors * is intentionally permissive here;
+      // if a specific merchant allowlist is ever required, swap the wildcard
+      // for a space-separated list of their domains.)
+      {
+        source: '/l/:slug*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'ALLOWALL' },
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *;' },
+        ],
+      },
+      {
+        source: '/pay/invoice/:id*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'ALLOWALL' },
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *;' },
+        ],
+      },
+      {
+        source: '/pay/embed/:id*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'ALLOWALL' },
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *;' },
+        ],
+      },
+      {
+        source: '/paddle-checkout',
+        headers: [
+          { key: 'X-Frame-Options', value: 'ALLOWALL' },
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *;' },
+        ],
+      },
     ];
   },
 

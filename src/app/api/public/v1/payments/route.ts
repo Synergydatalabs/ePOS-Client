@@ -294,9 +294,12 @@ export async function POST(request: NextRequest) {
   if (wantsPaddleRoute) {
     invoiceCreatedAt = link.createdAt.toISOString();
     checkoutUrl = `${origin}/l/${link.shortSlug}`;
-    // Embed URL doesn't apply to the Paddle flow yet (invoice doesn't
-    // exist until the customer clicks). Omit — API clients just use
-    // checkout_url + an <iframe> around it if needed.
+    // 2026-10-09: embed URL for iframe integrations (Korean merchants, etc).
+    // Same page as checkout_url but with ?embed=1 so the page strips its
+    // header/footer chrome and sends postMessage to the parent window on
+    // payment success. CSP + X-Frame-Options for /l/* in next.config.mjs
+    // allow cross-origin embedding.
+    embedUrl = `${origin}/l/${link.shortSlug}?embed=1`;
   } else {
     const invoice = await createInvoiceFromLink({
       slug: link.shortSlug,

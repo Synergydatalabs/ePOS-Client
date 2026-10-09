@@ -128,11 +128,18 @@ export async function POST(
       ? `https://${tenantHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
       : new URL(request.url).origin;
 
+    // 2026-10-09: iframe-embed flag. When /l/[slug] was rendered inside
+    // a partner iframe (?embed=1), we propagate it through the Paddle
+    // round-trip so /pay/invoice/[id] knows to postMessage the parent
+    // on paid instead of just rendering a receipt in-place. Appended as
+    // &embed=1 on the final success URL built by paddle-checkout.
+    const embedMode = body?.embed === true;
+
     // The checkout host page: /paddle-checkout loads Paddle.js and opens
     // the overlay. The invoice id is carried as a query param so the
     // Paddle.js successUrl can send the customer to the right invoice
     // page after they pay. Paddle appends `?_ptxn=<txn_id>` automatically.
-    const checkoutPageUrl = `${originHost}/paddle-checkout?invoiceId=${invoice.id}`;
+    const checkoutPageUrl = `${originHost}/paddle-checkout?invoiceId=${invoice.id}${embedMode ? "&embed=1" : ""}`;
 
     const txn = await createPaddleTransaction({
       invoiceId: invoice.id,

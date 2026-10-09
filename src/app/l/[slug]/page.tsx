@@ -142,6 +142,12 @@ export default function PaymentLinkCheckout() {
   const slug = params?.slug || "";
   const urlQty = search?.get("qty");
   const attribution = search?.get("ref") || search?.get("utm_source");
+  // 2026-10-09: iframe-embed mode. Partners embed this page inside an
+  // <iframe> on their own site; passing ?embed=1 strips the header/footer
+  // chrome so the surrounding brand belongs to the parent, and the page
+  // forwards the flag through the Paddle success redirect so the pay-
+  // invoice page knows to postMessage the parent on completion.
+  const embedMode = search?.get("embed") === "1";
 
   const recaptcha = useRecaptcha();
 
@@ -443,6 +449,10 @@ export default function PaymentLinkCheckout() {
     setPaddleBusy(true);
     try {
       const body = await buildCheckoutBody();
+      // 2026-10-09: propagate the embed flag so paddle-start can tack
+      // &embed=1 onto the Paddle success URL. That lets /pay/invoice/[id]
+      // know to postMessage the parent iframe instead of just rendering.
+      if (embedMode) (body as Record<string, unknown>).embed = true;
       const res = await fetch(`/api/public/payment-links/${slug}/paddle-start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -575,7 +585,7 @@ export default function PaymentLinkCheckout() {
           ? `Sold by ${data.merchant.supplierDisplayName}`
           : null
       }
-      showPlatformChrome={data.merchant.poweredByVisible !== false}
+      showPlatformChrome={!embedMode && data.merchant.poweredByVisible !== false}
     >
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Amount due — mirrors the invoice pay page's hero panel. Facts

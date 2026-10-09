@@ -46,7 +46,7 @@ import {
 // the actual T&C rendering + acceptance capture into that same block.
 // =============================================================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 
@@ -163,6 +163,12 @@ export default function PayInvoicePage() {
   const searchParams = useSearchParams();
   const paidQueryFlag = searchParams?.get("paid") === "1";
   const paidVia = searchParams?.get("via") || null;
+  // 2026-10-09: iframe-embed mode. When this invoice page is loaded
+  // inside a partner's iframe (?embed=1 carried through the Paddle
+  // success URL), we postMessage the parent window on paid instead of
+  // just rendering the receipt. Partner JS listens for this and reacts
+  // (hides iframe, marks order paid, redirects, whatever).
+  const embedMode = searchParams?.get("embed") === "1";
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [supplier, setSupplier] = useState<Supplier | null>(null);
@@ -268,6 +274,37 @@ export default function PayInvoicePage() {
     }, 2000);
     return () => clearInterval(t);
   }, [paidQueryFlag, invoice, load]);
+
+  // 2026-10-09: iframe-embed postMessage. Fires once when the invoice
+  // transitions to PAID inside an embed. Parent window receives:
+  //   { type: 'payment:succeeded', invoiceId, invoiceNumber,
+  //     amountCents, currency }
+  // Targets * so the message reaches any ancestor origin — partners
+  // match on event.data.type and verify event.origin themselves (we
+  // document https://indianbeans.com as the expected origin). Fires at
+  // most once per mount so a re-render doesn't spam the parent.
+  const postedRef = useRef(false);
+  useEffect(() => {
+    if (!embedMode || !invoice) return;
+    if (invoice.paymentStatus !== "PAID") return;
+    if (postedRef.current) return;
+    if (typeof window === "undefined" || window.parent === window) return;
+    postedRef.current = true;
+    try {
+      window.parent.postMessage(
+        {
+          type: "payment:succeeded",
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          amountCents: invoice.totalCents,
+          currency: invoice.currency,
+        },
+        "*"
+      );
+    } catch {
+      /* parent gone; nothing we can do */
+    }
+  }, [embedMode, invoice]);
 
   const money = (cents: number, ccy = invoice?.currency || "CAD") =>
     `${ccy} ${(cents / 100).toLocaleString(undefined, {
