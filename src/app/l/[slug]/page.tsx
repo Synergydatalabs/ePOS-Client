@@ -148,6 +148,14 @@ export default function PaymentLinkCheckout() {
   // forwards the flag through the Paddle success redirect so the pay-
   // invoice page knows to postMessage the parent on completion.
   const embedMode = search?.get("embed") === "1";
+  // 2026-10-09: auto-KakaoPay (walk-in / POS) mode. When the merchant
+  // generates a QR with { qr_mode: "auto_kakao" } via the public API,
+  // the encoded URL is /l/<slug>?auto=kakao. We bypass the entire form
+  // (no email, no T&C) and fire /paddle-start as soon as the link data
+  // loads — Paddle on mobile deep-links the KakaoPay app directly, so
+  // the customer scans the merchant's QR with their phone camera and
+  // the KakaoPay app opens with the payment pre-filled.
+  const autoKakao = search?.get("auto") === "kakao";
 
   const recaptcha = useRecaptcha();
 
@@ -258,6 +266,69 @@ export default function PaymentLinkCheckout() {
     }
     if (slug) load();
   }, [slug, urlQty]);
+
+  // 2026-10-09: auto-KakaoPay (walk-in / POS) auto-start. When ?auto=kakao
+  // is in the URL, we don't show the normal form — once the link data
+  // arrives and Paddle is configured on the server, we immediately
+  // fire /paddle-start with a synthetic email (walk-in customers don't
+  // provide one; KakaoPay sends its own receipt) and redirect the
+  // customer to Paddle's hosted checkout. useRef guard prevents a
+  // double-fire if the effect re-runs for any reason.
+  const autoKakaoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoKakao) return;
+    if (!data || !data.available) return;
+    if (!data.paddleAvailable) return;
+    if (autoKakaoFiredRef.current) return;
+    if (paddleBusy) return;
+    autoKakaoFiredRef.current = true;
+    startAutoKakao();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoKakao, data, paddleBusy]);
+
+  // Dedicated start fn that skips every form validation (no email,
+  // no T&C, no name) — the merchant generated this QR on behalf of
+  // their walk-in customer who scanned it with their phone. The
+  // merchant's API-side API-key auth is the capability check; this
+  // page is a thin redirector.
+  async function startAutoKakao() {
+    if (!data) return;
+    setPaddleError(null);
+    setPaddleBusy(true);
+    try {
+      // Synthetic placeholder email — Paddle requires one, but
+      // KakaoPay doesn't need to deliver anything there (receipt
+      // is shown in the KakaoPay app). We tag it with the slug so
+      // it's identifiable in Paddle's dashboard without leaking a
+      // real customer identity.
+      const syntheticEmail = `qr-${slug}@qr-pay.local`;
+      const body: Record<string, unknown> = {
+        email: syntheticEmail,
+        acceptedTerms: true,
+        acceptedTermsVersion: "qr-auto-v1",
+        consents: { terms_acceptance: true },
+        // Signal to /paddle-start that this is an auto-flow — lets
+        // it skip the strict email validation in future if we want.
+        autoFlow: "kakao",
+      };
+      if (embedMode) body.embed = true;
+      const res = await fetch(`/api/public/payment-links/${slug}/paddle-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.paddleCheckoutUrl) {
+        throw new Error(json?.error || "Could not open KakaoPay checkout");
+      }
+      window.location.href = json.paddleCheckoutUrl;
+    } catch (err: any) {
+      setPaddleError(err?.message || "Could not open KakaoPay checkout");
+      setPaddleBusy(false);
+      // Allow a manual retry if the splash offers a retry button.
+      autoKakaoFiredRef.current = false;
+    }
+  }
 
   // Effective acceptance — when the supplier has T&C, all three boxes
   // must be checked (with typed name); when they don't, the simple
@@ -517,6 +588,22 @@ export default function PaymentLinkCheckout() {
   }
 
   // ------------- Renders --------------
+
+  // 2026-10-09: auto-KakaoPay splash. Pre-empts every other render path
+  // when ?auto=kakao is in the URL — the customer sees a minimal
+  // "Opening KakaoPay…" screen for ~500-1500ms before Paddle takes
+  // over and deep-links the KakaoPay app on their phone. On error we
+  // show a retry hint so a flaky network doesn't dead-end the flow.
+  if (autoKakao) {
+    const splashError = loadError || paddleError;
+    return (
+      <AutoKakaoSplash
+        merchantName={data?.merchant?.displayName ?? null}
+        error={splashError}
+        onRetry={splashError ? () => startAutoKakao() : null}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -1612,6 +1699,78 @@ function CheckoutFormInner({
 
       <div className="mt-3 text-center text-xs" style={{ color: MEGO_INK_3 }}>
         Your card details are handled securely.
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AutoKakaoSplash — the view the walk-in customer sees for the ~500-1500ms
+// between scanning the merchant's QR with their phone camera and Paddle's
+// KakaoPay deep-link opening. Minimal on purpose: a brand-neutral yellow-
+// gold palette the Korean market associates with KakaoPay, big spinner,
+// one sentence of copy. On error we show a retry button so a flaky mobile
+// network doesn't dead-end the flow.
+// ---------------------------------------------------------------------------
+function AutoKakaoSplash({
+  merchantName,
+  error,
+  onRetry,
+}: {
+  merchantName: string | null;
+  error: string | null;
+  onRetry: (() => void) | null;
+}) {
+  const KAKAO_YELLOW = "#FEE500";
+  const KAKAO_BROWN = "#3C1E1E";
+  return (
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-6"
+      style={{ background: KAKAO_YELLOW, color: KAKAO_BROWN }}
+    >
+      <div className="w-full max-w-sm text-center">
+        {/* Chat-bubble glyph — KakaoPay / KakaoTalk's visual anchor. */}
+        <div
+          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6"
+          style={{ background: KAKAO_BROWN }}
+        >
+          <svg width="40" height="40" viewBox="0 0 24 24" fill={KAKAO_YELLOW}>
+            <path d="M12 3C6.48 3 2 6.58 2 11c0 2.76 1.76 5.19 4.44 6.63L5 22l4.78-2.55c.72.1 1.46.15 2.22.15 5.52 0 10-3.58 10-8s-4.48-8-10-8z" />
+          </svg>
+        </div>
+
+        {!error ? (
+          <>
+            <div
+              className="inline-block w-8 h-8 border-4 rounded-full animate-spin mb-5"
+              style={{ borderColor: KAKAO_BROWN, borderTopColor: "transparent" }}
+            />
+            <h1 className="text-xl font-bold">Opening KakaoPay…</h1>
+            <p className="mt-2 text-sm opacity-80">
+              {merchantName
+                ? `Preparing your payment to ${merchantName}.`
+                : "Preparing your payment."}
+            </p>
+            <p className="mt-6 text-xs opacity-60">
+              Please hold on — this takes a moment.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-xl font-bold">Couldn&apos;t open KakaoPay</h1>
+            <p className="mt-2 text-sm opacity-80">{error}</p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-5 inline-flex items-center justify-center px-5 py-2.5 rounded-full font-semibold text-sm"
+                style={{ background: KAKAO_BROWN, color: KAKAO_YELLOW }}
+              >
+                Try again
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

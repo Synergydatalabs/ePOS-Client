@@ -50,8 +50,23 @@ export async function POST(
       console.warn(`[PADDLE-START] ${slug} reCAPTCHA soft-failed:`, captcha.reason);
     }
 
+    // 2026-10-09: when the caller signals the auto-KakaoPay (walk-in /
+    // POS) flow — body.autoFlow === "kakao" — the email is synthetic
+    // (qr-<slug>@qr-pay.local) because the walk-in customer never typed
+    // one. We still require a value for Paddle, but let the ".local"
+    // TLD through. For every other path the strict RFC-shape check
+    // continues to apply.
     const emailRaw = String(body?.email || "").trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+    const isAutoKakao = body?.autoFlow === "kakao";
+    if (isAutoKakao) {
+      // Lenient: just make sure it looks like local@domain.
+      if (!/^[^\s@]+@[^\s@]+$/.test(emailRaw)) {
+        return NextResponse.json(
+          { error: "Synthetic email missing on auto-KakaoPay request" },
+          { status: 400 }
+        );
+      }
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
       return NextResponse.json({ error: "Valid email required" }, { status: 400 });
     }
 

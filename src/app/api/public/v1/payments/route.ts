@@ -82,6 +82,14 @@ interface PaymentRequestBody {
   // 2026-10-09 — Paddle + QR extensions for Korean / KakaoPay integrations.
   payment_methods?: unknown; // e.g. ["card"] or ["kakao_pay", "card"]
   qr?: unknown;              // boolean; include qr_data_url in response
+  // 2026-10-09 — qr_mode="auto_kakao" is the walk-in / POS flow: the
+  // generated QR encodes a URL that bypasses the email + T&C form and
+  // immediately opens the Paddle KakaoPay checkout. Customer scans
+  // merchant's QR with their phone camera → page auto-forwards → Paddle
+  // deep-links the KakaoPay app → pay → done. No email required from
+  // the end customer. The merchant's own API-side `customer.email` is
+  // still stored on the transaction for receipt / audit purposes.
+  qr_mode?: unknown;
 }
 
 // Payment methods that route through Paddle instead of Stripe. Anything in
@@ -194,6 +202,18 @@ export async function POST(request: NextRequest) {
     : [];
   const wantsPaddleRoute = paymentMethods.some((m) => PADDLE_METHODS.has(m));
   const wantsQr = raw.qr === true;
+
+  // 2026-10-09: qr_mode = "auto_kakao" short-circuits the pay flow for
+  // walk-in / POS scenarios. Only valid when the Paddle route is in use
+  // (there's no sensible "auto open Stripe card" because Stripe needs
+  // card entry on the page). We stash the merchant-supplied email on
+  // the invoice via createInvoiceFromLink below so the Paddle txn still
+  // has a receipt target; the customer never has to type anything.
+  const qrMode =
+    typeof raw.qr_mode === "string" && raw.qr_mode.trim()
+      ? raw.qr_mode.trim().toLowerCase()
+      : null;
+  const autoKakaoMode = qrMode === "auto_kakao" && wantsPaddleRoute;
 
   const metadata =
     raw.metadata && typeof raw.metadata === "object" && !Array.isArray(raw.metadata)
@@ -310,13 +330,21 @@ export async function POST(request: NextRequest) {
 
   if (wantsPaddleRoute) {
     invoiceCreatedAt = link.createdAt.toISOString();
-    checkoutUrl = `${origin}/l/${link.shortSlug}`;
+    // 2026-10-09: auto_kakao mode — append ?auto=kakao so /l/[slug]
+    // skips the form and fires paddle-start on load. No merchant /
+    // customer email is persisted on the link — /paddle-start will
+    // use a synthetic placeholder email derived from the slug when
+    // the auto flag is set. Rationale: walk-in POS, KakaoPay sends
+    // its own receipt, we have no genuine customer email anyway.
+    const autoQs = autoKakaoMode ? `?auto=kakao` : "";
+    checkoutUrl = `${origin}/l/${link.shortSlug}${autoQs}`;
     // 2026-10-09: embed URL for iframe integrations (Korean merchants, etc).
     // Same page as checkout_url but with ?embed=1 so the page strips its
     // header/footer chrome and sends postMessage to the parent window on
     // payment success. CSP + X-Frame-Options for /l/* in next.config.mjs
     // allow cross-origin embedding.
-    embedUrl = `${origin}/l/${link.shortSlug}?embed=1`;
+    const embedAutoQs = autoKakaoMode ? `?embed=1&auto=kakao` : "?embed=1";
+    embedUrl = `${origin}/l/${link.shortSlug}${embedAutoQs}`;
   } else {
     const invoice = await createInvoiceFromLink({
       slug: link.shortSlug,
@@ -367,7 +395,11 @@ export async function POST(request: NextRequest) {
       ...(embedUrl ? { embed_url: embedUrl } : {}),
       ...(qrDataUrl ? { qr_data_url: qrDataUrl } : {}),
       ...(wantsPaddleRoute
-        ? { payment_methods: paymentMethods, link_slug: link.shortSlug }
+        ? {
+            payment_methods: paymentMethods,
+            link_slug: link.shortSlug,
+            ...(autoKakaoMode ? { qr_mode: "auto_kakao" } : {}),
+          }
         : {}),
       created_at: invoiceCreatedAt,
     },
