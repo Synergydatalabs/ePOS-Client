@@ -52,6 +52,14 @@ export async function initializeHelcimCheckout(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // 2026-10-09: dump the exact request body we sent + full response to
+    // server logs so we can see what Helcim is actually rejecting. Client
+    // still gets a clean short error message.
+    console.error("[HELCIM-INITIALIZE] rejected", {
+      status: res.status,
+      requestBody: body,
+      responseBody: text,
+    });
     throw new Error(
       `Helcim initialize failed (${res.status}): ${text || res.statusText}`
     );

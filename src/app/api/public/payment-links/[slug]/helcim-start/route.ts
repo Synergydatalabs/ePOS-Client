@@ -121,29 +121,42 @@ export async function POST(
 
     // Mint a HelcimPay.js checkout session.
     //
-    // 2026-10-09 — Helcim's `invoiceNumber` field expects their own
-    // format: `INV` + numeric digits (e.g. INV1000, INV1760061234567).
-    // Anything else — UUIDs, alphanumeric codes with letters mixed in,
-    // short refs — returns 400 "Invalid Invoice Number". So we build
-    // one from a timestamp: "INV" + Date.now() → 16 chars, pure digits
-    // after the INV prefix, globally unique per call.
+    // 2026-10-09 — After trying UUIDs, UUID prefixes, pure alphanumeric
+    // ("H…"), and INV+digits formats, every string we send returns 400
+    // "Invalid Invoice Number" on this Helcim test account. Giving up
+    // on invoiceNumber from our side — OMIT the field entirely so
+    // Helcim auto-generates its own internal invoice number. The pay
+    // modal opens; we correlate the webhook back to our invoice via
+    // the Helcim transactionId (passed in the webhook payload) which
+    // we stash on the invoice right after the client-side success
+    // postMessage. See /l/[slug]/HelcimPaymentSection for the client
+    // confirm step.
     //
-    // Stashed on invoice.paymentLinkRef so the webhook can match it
-    // back to the right invoice.
+    // Local paymentLinkRef still gets a short code so reporting shows
+    // *something* human; the webhook falls back to a most-recent-match
+    // when no transactionId correlation is possible yet.
     //
-    // customerCode omitted — Helcim auto-generates it.
-    const helcimRef = "INV" + Date.now().toString();
+    // customerCode is also omitted — Helcim auto-generates it.
+    const localRef = "H" + Date.now().toString();
 
     await prisma.supplierInvoice.update({
       where: { id: invoice.id },
-      data: { paymentLinkRef: helcimRef },
+      data: { paymentLinkRef: localRef },
     });
 
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
-      invoiceNumber: helcimRef,
+    });
+
+    console.log("[HELCIM-START]", {
+      slug,
+      invoiceId: invoice.id,
+      localRef,
+      amount: invoice.totalCents / 100,
+      currency: invoice.currency,
+      helcimCheckoutToken: session.checkoutToken?.slice(0, 10) + "…",
     });
 
     return NextResponse.json({
