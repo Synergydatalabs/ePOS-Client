@@ -620,13 +620,18 @@ export default function PaymentLinkCheckout() {
   }
 
   if (loading) {
+    // 2026-10-10: neutral loading view (no Shell) so white-label tenants
+    // don't flash the default MEGO navy header for a split second before
+    // their brand hero mounts. Plain cream background matches the brand
+    // page surface — read as "page loading" regardless of eventual brand.
     return (
-      <Shell>
-        <div className="text-center py-16">
-          <div className="animate-spin inline-block h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
-          <p className="mt-4 text-sm text-gray-500">Loading checkout…</p>
-        </div>
-      </Shell>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ background: "#F8F6F1" }}
+      >
+        <div className="animate-spin inline-block h-8 w-8 border-4 border-gray-300 border-t-transparent rounded-full" />
+        <p className="mt-4 text-sm text-gray-500">Loading checkout…</p>
+      </div>
     );
   }
 
