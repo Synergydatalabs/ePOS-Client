@@ -19,6 +19,7 @@
   .brand { color: #E0A526; font-weight: 700; }
   .note { background: #FFFBEB; border-left: 3px solid #E0A526; padding: 5pt 9pt; margin: 5pt 0; font-size: 9.5pt; border-radius: 2pt; }
   .warn { background: #FEF2F2; border-left: 3px solid #B8322A; padding: 5pt 9pt; margin: 5pt 0; font-size: 9.5pt; border-radius: 2pt; }
+  .ok { background: #ECFDF5; border-left: 3px solid #10B981; padding: 5pt 9pt; margin: 5pt 0; font-size: 9.5pt; border-radius: 2pt; }
   table { width: 100%; border-collapse: collapse; margin: 4pt 0 7pt; font-size: 9.5pt; }
   th, td { text-align: left; padding: 3pt 6pt; border-bottom: 1px solid #E5E7EB; vertical-align: top; }
   th { background: #F9FAFB; font-weight: 600; color: #17301F; }
@@ -30,6 +31,8 @@
   .logo { display: inline-block; width: 20pt; height: 20pt; vertical-align: middle; margin-right: 6pt; }
   .title-row { display: flex; align-items: center; margin-bottom: 2pt; }
   .placeholder { background: #FEF3C7; color: #78350F; font-weight: 700; padding: 0 3pt; border-radius: 2pt; }
+  .option-tag { display: inline-block; background: #17301F; color: #FEE500; font-weight: 700; padding: 1pt 6pt; border-radius: 10pt; font-size: 9pt; margin-right: 5pt; letter-spacing: 0.3pt; }
+  .option-tag.b { background: #FEE500; color: #17301F; }
 </style>
 </head>
 <body>
@@ -38,32 +41,45 @@
   <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(-32 32 32)"><ellipse cx="32" cy="32" rx="18.5" ry="27" fill="#6B3E26"/><path d="M32 5.5c-9 11 9 22 0 33.5-5 6.5-2.5 13 0 19" fill="none" stroke="#E0A526" stroke-width="4.2" stroke-linecap="round"/></g></svg>
   <h1><span class="brand">Indian Beans</span> Payments API — Korean Integration Guide</h1>
 </div>
-<p class="meta">Accept KakaoPay / card payments on your Korean site in three steps · API host: <code>https://indianbeans.com</code></p>
+<p class="meta">Accept KakaoPay payments on your Korean site · API host: <code>https://indianbeans.com</code></p>
 
-<h2>Overview</h2>
-<p>Your server generates a payment on <code>indianbeans.com</code> → we return a hosted checkout URL, a QR code and an iframe URL. The customer pays via KakaoPay inside an iframe embedded on your site. On completion, your browser receives a <code>postMessage</code> and your server receives a webhook. Everything is driven by your API key — your customers never leave your site.</p>
+<h2>Two integration options</h2>
+<p>Pick whichever matches your business flow. The API is the same for both; one request field (<code>qr_mode</code>) switches the UX.</p>
+<table>
+  <tr><th style="width:12%">Option</th><th>Use when</th><th>Customer experience</th></tr>
+  <tr>
+    <td><span class="option-tag b">B · QR</span></td>
+    <td>Walk-in / POS, retail counter, invoice sent to a client.</td>
+    <td>Merchant shows one QR. Customer scans with phone camera → KakaoPay app opens pre-filled → tap Pay. No email / no form.</td>
+  </tr>
+  <tr>
+    <td><span class="option-tag">A · iframe</span></td>
+    <td>Customer buys from your Korean website / web app.</td>
+    <td>KakaoPay flow runs inside an <code>&lt;iframe&gt;</code> on your page. Your parent window receives a <code>postMessage</code> on success.</td>
+  </tr>
+</table>
 
-<h2>Prerequisites</h2>
+<h2>Prerequisites (both options)</h2>
 <ol>
   <li>An Indian Beans account at <code>https://indianbeans.com/signup</code>.</li>
   <li>An API key: <strong>Portal → Settings → API Keys → Create new key</strong>. Copy it immediately — the full value is shown once.</li>
-  <li>A webhook endpoint on your server (optional but recommended) that we can POST to on payment success / failure.</li>
+  <li>A webhook endpoint on your server (optional but recommended) that we POST to on payment success / failure.</li>
 </ol>
 
-<h2>Step 1 · Create a payment (your server)</h2>
-<p>From your backend, call this endpoint for every new order. The response includes everything your frontend needs.</p>
+<h2><span class="option-tag b">Option B</span> QR walk-in flow</h2>
+<p>You call the API once per customer and get back a QR code. Show the QR to the walk-in customer; they scan it with their phone camera, KakaoPay opens with the amount pre-filled, they tap Pay. The customer never fills out a form.</p>
+
+<h3>Step B1 · Create the payment (your server)</h3>
 <pre><code>curl -X POST https://indianbeans.com/api/public/v1/payments \
   -H "Authorization: Bearer <span class="placeholder">YOUR_API_KEY</span>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 3000,
+    "amount": 100000,
     "currency": "KRW",
     "payment_methods": ["kakao_pay"],
     "qr": true,
-    "customer": {
-      "email": "buyer@korean-site.co.kr",
-      "name": "홍길동"
-    },
+    "qr_mode": "auto_kakao",
+    "customer": { "email": "pos@<span class="placeholder">your-site.co.kr</span>" },
     "description": "Order #<span class="placeholder">YOUR_ORDER_ID</span>",
     "webhook_url": "https://<span class="placeholder">your-site.co.kr</span>/webhooks/hub-paid",
     "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
@@ -73,18 +89,78 @@
 <pre><code>{
   "id":           "cmg...",
   "status":       "created",
-  "amount":       3000,
+  "amount":       100000,
   "currency":     "krw",
-  "checkout_url": "https://indianbeans.com/l/AbCdEfGh",
-  "embed_url":    "https://indianbeans.com/l/AbCdEfGh?embed=1",
+  "qr_mode":      "auto_kakao",
+  "checkout_url": "https://indianbeans.com/l/AbCdEfGh?auto=kakao",
   "qr_data_url":  "data:image/png;base64,iVBORw0KGgoAA...",
   "link_slug":    "AbCdEfGh",
-  "payment_methods": ["kakao_pay"],
   "created_at":   "2026-10-09T12:34:56Z"
 }</code></pre>
 
-<h2>Step 2 · Embed on your customer-facing page</h2>
-<p>Drop this where you want the payment widget. Replace <span class="placeholder">EMBED_URL</span> with the <code>embed_url</code> from Step 1.</p>
+<h3>Step B2 · Display the QR to the customer</h3>
+<p>The <code>qr_data_url</code> is a ready-to-render PNG. Drop it into your POS screen, invoice email, or printed receipt:</p>
+<pre><code>&lt;img src="<span class="placeholder">QR_DATA_URL</span>" alt="Scan to pay with KakaoPay" width="300" height="300"&gt;</code></pre>
+
+<p><strong>What happens when the customer scans:</strong></p>
+<ol>
+  <li>Customer opens their phone camera and points at the QR.</li>
+  <li>Phone detects the link and offers to open it — customer taps.</li>
+  <li>Phone browser shows a brief <em>&ldquo;Opening KakaoPay…&rdquo;</em> splash (~1 second).</li>
+  <li>KakaoPay app opens with the amount, merchant and reference pre-filled.</li>
+  <li>Customer taps <strong>Pay</strong> inside KakaoPay. Receipt is shown in the KakaoPay app.</li>
+</ol>
+
+<h3>Step B3 · Receive the webhook on your server (recommended)</h3>
+<p>On payment success/failure we POST your <code>webhook_url</code> with a JSON body. Verify, mark the order paid, respond <code>200 OK</code>.</p>
+<pre><code>POST https://<span class="placeholder">your-site.co.kr</span>/webhooks/hub-paid
+Content-Type: application/json
+
+{
+  "event":    "payment.succeeded",
+  "payment": { "id": "cmg...", "amount": 100000, "currency": "krw",
+               "status": "paid", "method": "kakao_pay" },
+  "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
+}</code></pre>
+
+<div class="note">
+<strong>Why email isn&apos;t required:</strong> walk-in customers don&apos;t supply one. KakaoPay sends its own receipt in-app, so we only need an email for the server-side invoice record. The one in <code>customer.email</code> above should be a merchant-side address (e.g. POS, accounting) — never a fabricated customer email.
+</div>
+
+<p class="footer">Page 1 / 3 · Confidential — share with your integration developer only</p>
+<div class="page-break"></div>
+
+<h2><span class="option-tag">Option A</span> Iframe embed flow</h2>
+<p>For when the customer is already on your Korean website buying something. The KakaoPay checkout renders inside an <code>&lt;iframe&gt;</code> you drop on your page; your parent window gets a <code>postMessage</code> on success.</p>
+
+<h3>Step A1 · Create the payment (your server)</h3>
+<pre><code>curl -X POST https://indianbeans.com/api/public/v1/payments \
+  -H "Authorization: Bearer <span class="placeholder">YOUR_API_KEY</span>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000,
+    "currency": "KRW",
+    "payment_methods": ["kakao_pay"],
+    "customer": {
+      "email": "buyer@<span class="placeholder">your-site.co.kr</span>",
+      "name":  "홍길동"
+    },
+    "description": "Order #<span class="placeholder">YOUR_ORDER_ID</span>",
+    "webhook_url": "https://<span class="placeholder">your-site.co.kr</span>/webhooks/hub-paid",
+    "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
+  }'</code></pre>
+
+<p>Note: no <code>qr_mode</code> field — that&apos;s what switches to Option B. For the iframe flow omit it.</p>
+
+<p><strong>Response includes an iframe-ready URL:</strong></p>
+<pre><code>{
+  "id":           "cmg...",
+  "checkout_url": "https://indianbeans.com/l/AbCdEfGh",
+  "embed_url":    "https://indianbeans.com/l/AbCdEfGh?embed=1",
+  "link_slug":    "AbCdEfGh"
+}</code></pre>
+
+<h3>Step A2 · Embed on your customer-facing page</h3>
 <pre><code>&lt;iframe
   id="hub-payment"
   src="<span class="placeholder">EMBED_URL</span>"
@@ -99,93 +175,111 @@
   window.addEventListener('message', function(e) {
     if (e.origin !== 'https://indianbeans.com') return;   // always verify origin
     if (e.data &amp;&amp; e.data.type === 'payment:succeeded') {
-      // Payment confirmed on our side. Example reactions:
       document.getElementById('hub-payment').style.display = 'none';
       document.getElementById('thank-you').style.display = 'block';
-      // Optional: double-check with your backend
       fetch('/mark-paid?invoice=' + encodeURIComponent(e.data.invoiceId));
     }
   });
 &lt;/script&gt;</code></pre>
 
-<p class="footer">Page 1 / 2 · Confidential — share with your integration developer only</p>
-
-<div class="page-break"></div>
-
-<h2>Step 3 · Receive the webhook on your server</h2>
-<p>On payment success or failure we POST your <code>webhook_url</code> with a JSON body. Verify, mark the order paid, respond <code>200 OK</code>.</p>
-<pre><code>POST https://your-site.co.kr/webhooks/hub-paid
-Content-Type: application/json
-
-{
-  "event": "payment.succeeded",
-  "payment": {
-    "id":       "cmg...",
-    "amount":   3000,
-    "currency": "krw",
-    "status":   "paid",
-    "method":   "kakao_pay"
-  },
-  "customer": { "email": "buyer@korean-site.co.kr", "name": "홍길동" },
-  "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
-}</code></pre>
+<h3>Step A3 · Receive the webhook</h3>
+<p>Same shape as Option B. See <strong>Step B3</strong> on the previous page.</p>
 
 <div class="note">
-<strong>Why both postMessage + webhook?</strong> The <code>postMessage</code> is instant UI feedback for the customer in the iframe. The webhook is the authoritative server-to-server confirmation — trust it, not the client. Always mark orders paid from the webhook, not the browser.
+<strong>Why both postMessage + webhook?</strong> The <code>postMessage</code> is instant UI feedback for the customer in the iframe. The webhook is the authoritative server-to-server confirmation — always mark orders paid from the webhook, never only from the browser message.
 </div>
 
 <h2>Reference</h2>
 
-<h3>Request fields (POST /api/public/v1/payments)</h3>
+<h3>Request fields — POST /api/public/v1/payments</h3>
 <table>
   <tr><th style="width:28%">Field</th><th>Type</th><th>Notes</th></tr>
-  <tr><td><code>amount</code></td><td>integer</td><td>Smallest unit (₩ for KRW, cents for USD). Required.</td></tr>
+  <tr><td><code>amount</code></td><td>integer</td><td>Smallest unit (₩ for KRW — pass whole won; cents for USD). <strong>Required.</strong></td></tr>
   <tr><td><code>currency</code></td><td>string</td><td>ISO 4217 code. KRW, USD, CAD, EUR, etc.</td></tr>
-  <tr><td><code>payment_methods</code></td><td>string[]</td><td><code>["kakao_pay"]</code>, <code>["paypal"]</code>, <code>["alipay"]</code> — or omit for Stripe card.</td></tr>
-  <tr><td><code>qr</code></td><td>boolean</td><td><code>true</code> to receive <code>qr_data_url</code> in the response.</td></tr>
-  <tr><td><code>customer.email</code></td><td>string</td><td>Required. Shown on receipt + email target.</td></tr>
+  <tr><td><code>payment_methods</code></td><td>string[]</td><td><code>["kakao_pay"]</code>. (Also supports <code>["paypal"]</code>, <code>["alipay"]</code>.)</td></tr>
+  <tr><td><code>qr</code></td><td>boolean</td><td><code>true</code> → <code>qr_data_url</code> included in response.</td></tr>
+  <tr><td><code>qr_mode</code></td><td>string</td><td><code>"auto_kakao"</code> → Option B (QR walk-in). Omit for Option A (iframe).</td></tr>
+  <tr><td><code>customer.email</code></td><td>string</td><td>Required. For Option B this is a merchant-side address — not shown to the customer.</td></tr>
   <tr><td><code>customer.name</code></td><td>string</td><td>Optional. Supports Korean characters.</td></tr>
-  <tr><td><code>description</code></td><td>string</td><td>Shown on the checkout page. ≤ 500 chars.</td></tr>
-  <tr><td><code>webhook_url</code></td><td>string</td><td>Where we POST on payment events. HTTPS.</td></tr>
+  <tr><td><code>description</code></td><td>string</td><td>≤ 500 chars. Shown on the Paddle hosted checkout page.</td></tr>
+  <tr><td><code>webhook_url</code></td><td>string</td><td>HTTPS. Where we POST on payment events.</td></tr>
   <tr><td><code>metadata</code></td><td>object</td><td>Any JSON. Echoed in the webhook payload.</td></tr>
 </table>
 
-<h3>postMessage event (from iframe → your parent window)</h3>
+<p class="footer">Page 2 / 3 · <span class="brand">Indian Beans</span> Payments API</p>
+<div class="page-break"></div>
+
+<h3>Response fields</h3>
+<table>
+  <tr><th style="width:28%">Field</th><th>Appears for</th><th>Use for</th></tr>
+  <tr><td><code>id</code></td><td>Both</td><td>Internal reference (an invoice or link id).</td></tr>
+  <tr><td><code>checkout_url</code></td><td>Both</td><td>Full-page checkout. Share via email, SMS, or print. For Option B this includes <code>?auto=kakao</code>.</td></tr>
+  <tr><td><code>embed_url</code></td><td>Option A</td><td>iframe <code>src</code>. Chrome stripped, <code>postMessage</code> on paid.</td></tr>
+  <tr><td><code>qr_data_url</code></td><td>Both (when <code>qr: true</code>)</td><td>Inline PNG QR of <code>checkout_url</code>. Scan with phone camera.</td></tr>
+  <tr><td><code>qr_mode</code></td><td>Option B only</td><td>Echoes <code>"auto_kakao"</code> so you can confirm the mode.</td></tr>
+  <tr><td><code>link_slug</code></td><td>Both</td><td>The short slug portion of <code>checkout_url</code>.</td></tr>
+</table>
+
+<h3>postMessage event (Option A only — iframe → parent)</h3>
 <pre><code>{
   "type":          "payment:succeeded",
   "invoiceId":     "cmg...",
   "invoiceNumber": "INV-2026-0042",
-  "amountCents":   3000,
+  "amountCents":   100000,
   "currency":      "KRW"
 }</code></pre>
 
-<h3>Response URLs</h3>
-<table>
-  <tr><th style="width:28%">URL</th><th>Use for</th></tr>
-  <tr><td><code>checkout_url</code></td><td>Full-page checkout. Send via email, SMS, or redirect.</td></tr>
-  <tr><td><code>embed_url</code></td><td>iframe source. Chrome stripped, postMessage on paid.</td></tr>
-  <tr><td><code>qr_data_url</code></td><td>Inline PNG QR of <code>checkout_url</code>. Scan with KakaoPay app.</td></tr>
-</table>
+<h3>Webhook body (both options)</h3>
+<pre><code>POST https://<span class="placeholder">your-site.co.kr</span>/webhooks/hub-paid
+Content-Type: application/json
+
+{
+  "event":    "payment.succeeded" | "payment.failed",
+  "payment": {
+    "id":       "cmg...",
+    "amount":   100000,
+    "currency": "krw",
+    "status":   "paid" | "failed",
+    "method":   "kakao_pay"
+  },
+  "customer": { "email": "...", "name": "..." },
+  "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
+}</code></pre>
 
 <h2>Testing checklist</h2>
+
+<h3>Option B — QR flow</h3>
 <ul>
-  <li>POST the request from your server. Response must be <strong>201</strong> and include <code>embed_url</code>.</li>
-  <li>Open <code>checkout_url</code> in a browser — Indian Beans checkout loads with your amount.</li>
-  <li>Open <code>embed_url</code> in a browser — same page, header + footer stripped.</li>
-  <li>Scan <code>qr_data_url</code> with any QR reader — resolves to <code>checkout_url</code>.</li>
-  <li>Complete a test payment with a real Korean phone + KakaoPay app (small amount, refund via Paddle dashboard after).</li>
-  <li>Confirm your webhook endpoint received the <code>payment.succeeded</code> POST.</li>
-  <li>Confirm your parent-page <code>message</code> listener fired with <code>type: 'payment:succeeded'</code>.</li>
+  <li>POST the request. Response <strong>201</strong> with <code>qr_data_url</code> and <code>qr_mode: "auto_kakao"</code>.</li>
+  <li>Open <code>checkout_url</code> in a desktop browser — <em>&ldquo;Opening KakaoPay…&rdquo;</em> splash renders, Paddle checkout follows.</li>
+  <li>Save <code>qr_data_url</code> as a PNG (decode the base64). Display it on screen or print it.</li>
+  <li>Scan with a Korean phone camera that has the KakaoPay app installed. KakaoPay should open with the payment pre-filled.</li>
+  <li>Complete a test payment (KRW minimum ≈ ₩1,000). Confirm your webhook endpoint received the <code>payment.succeeded</code> POST.</li>
+</ul>
+
+<h3>Option A — iframe flow</h3>
+<ul>
+  <li>POST the request. Response <strong>201</strong> with <code>embed_url</code>.</li>
+  <li>Open <code>embed_url</code> directly in a browser — bare-chrome checkout loads.</li>
+  <li>Drop the iframe snippet onto a test page on your site. Attach the <code>message</code> listener.</li>
+  <li>Complete a test payment with a real Korean phone + KakaoPay. Confirm your parent-window listener fires and your webhook receives the event.</li>
+</ul>
+
+<h2>Minimum amounts &amp; limits</h2>
+<ul>
+  <li><strong>KRW minimum per transaction:</strong> ~₩1,000. Smaller amounts are rejected by Paddle with a &ldquo;transaction balance less than minimum&rdquo; error.</li>
+  <li>Amounts are integers in the currency&apos;s smallest unit. For KRW that&apos;s whole won (no decimals). For USD / CAD / EUR that&apos;s cents.</li>
+  <li>One payment request = one single-use session. Create a new one per order.</li>
 </ul>
 
 <div class="warn">
-<strong>Security:</strong> never ship your API key in frontend code. Always call the <code>/payments</code> endpoint from your backend. The iframe URL is safe to expose — it's a short-lived single-use session.
+<strong>Security:</strong> never ship your API key in frontend code. Always call <code>/api/public/v1/payments</code> from your backend. The returned <code>checkout_url</code> / <code>embed_url</code> / <code>qr_data_url</code> are safe to send to the browser — each is a short-lived single-use session.
 </div>
 
 <h2>Support</h2>
 <p>Technical questions: <code>hello@indianbeans.com</code> · Response within one business day. Include your API key prefix (first 10 chars) and the <code>id</code> from the response.</p>
 
-<p class="footer">Page 2 / 2 · <span class="brand">Indian Beans</span> Payments API · indianbeans.com</p>
+<p class="footer">Page 3 / 3 · <span class="brand">Indian Beans</span> Payments API · indianbeans.com</p>
 
 </body>
 </html>

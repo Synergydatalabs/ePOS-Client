@@ -74,6 +74,20 @@ export async function GET(
       // Non-fatal — the checkout page will just fall back to the redirect flow.
     }
 
+    // 2026-10-09: Helcim as the alternative card processor. When the
+    // tenant has an ACTIVE Helcim provider row (mutually exclusive with
+    // Stripe), the pay page mounts the HelcimPay.js modal instead of
+    // Stripe Elements. We only expose a boolean — the API token stays
+    // server-side.
+    let helcimAvailable = false;
+    try {
+      const { loadHelcimCredentials } = await import("@/lib/helcim/client");
+      const helcimCreds = await loadHelcimCredentials(link.supplierTenantId);
+      helcimAvailable = !!helcimCreds?.apiToken;
+    } catch {
+      // Non-fatal.
+    }
+
     return NextResponse.json({
       success: true,
       available: availability.ok,
@@ -143,6 +157,10 @@ export async function GET(
       // alongside the Stripe form. Env-var gated — zero impact when
       // PADDLE_API_KEY is unset.
       paddleAvailable: getPaddleConfig().isConfigured,
+      // 2026-10-09: when the tenant has an ACTIVE Helcim provider, the
+      // pay page mounts the HelcimPay.js modal in place of Stripe. The
+      // activation is per-tenant (Helcim mutually exclusive with Stripe).
+      helcimAvailable,
     });
   } catch (err: any) {
     console.error("[PAYMENT-LINK-PUBLIC] GET error:", err);

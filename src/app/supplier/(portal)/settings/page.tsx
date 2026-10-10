@@ -165,6 +165,25 @@ export default function SupplierSettingsPage() {
         <Icon icon="solar:arrow-right-linear" className="w-5 h-5 text-teal-700 flex-shrink-0" />
       </a>
 
+      {/* 2026-10-09: Helcim as the alternative card processor. Mutually
+          exclusive with Stripe — enabling one deactivates the other. */}
+      <a
+        href="/supplier/settings/helcim"
+        className="mb-3 flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50/60 p-4 hover:bg-purple-50 transition-colors"
+      >
+        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+          <Icon icon="solar:card-2-bold-duotone" className="w-5 h-5 text-purple-700" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-purple-900">Helcim API token &amp; webhook</p>
+          <p className="text-sm text-purple-800/80">
+            Bring your own Helcim account instead of Stripe. One card processor
+            active at a time per tenant.
+          </p>
+        </div>
+        <Icon icon="solar:arrow-right-linear" className="w-5 h-5 text-purple-700 flex-shrink-0" />
+      </a>
+
       {/* Phase I #5 v2 (2026-09-14): webhooks moved from global settings
           to per-payment-link (each link goes to a different partner, so
           URL + template + secret live on the link itself). Configure

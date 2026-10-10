@@ -27,6 +27,9 @@ import { useRecaptcha } from "@/hooks/useRecaptcha";
 // /pay/invoice/[id]. The Stripe Elements form mounts on this same page
 // once the invoice + PaymentIntent are created behind the scenes.
 import StripePaymentSection from "@/app/pay/invoice/[invoiceId]/StripePaymentSection";
+// 2026-10-09: Helcim as the alternative CARD processor. Mounted in
+// place of Stripe when data.helcimAvailable is true.
+import HelcimPaymentSection from "./HelcimPaymentSection";
 // Phase I #2e (2026-09-08): deferred-intent Elements. Card fields render
 // from page load (no clientSecret required initially) — customer sees the
 // card entry alongside the form. On Pay, we create the invoice + PI +
@@ -120,6 +123,11 @@ interface LinkData {
   // that routes through Paddle's hosted checkout. Driven by server
   // env (PADDLE_API_KEY + PADDLE_PRODUCT_ID + PADDLE_WEBHOOK_SECRET).
   paddleAvailable?: boolean;
+  // 2026-10-09: when the tenant has an ACTIVE Helcim provider row,
+  // the pay page mounts the HelcimPay.js modal in place of Stripe.
+  // Mutually exclusive with stripePublishableKey — the Settings UI
+  // enforces one CARD processor active at a time per tenant.
+  helcimAvailable?: boolean;
 }
 
 function formatMoney(cents: number, currency: string) {
@@ -1101,6 +1109,36 @@ export default function PaymentLinkCheckout() {
                 </div>
               )}
             </div>
+          ) : data.helcimAvailable && total != null ? (
+            // 2026-10-09: tenant has active Helcim provider — mount
+            // HelcimPay.js modal in place of Stripe Elements. Mutually
+            // exclusive with the Stripe branch; the Settings UI enforces
+            // the one-processor-per-tenant invariant.
+            <HelcimPaymentSection
+              slug={slug}
+              amountCents={total}
+              currency={data.link.currency}
+              buildBody={() => buildCheckoutBody()}
+              allInputsValid={
+                !submitting &&
+                allAccepted &&
+                !!email.trim() &&
+                /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
+                (!data.link.requireName || !!name.trim())
+              }
+              onSuccess={(invoiceId) => {
+                setPaidConfirm({
+                  invoiceNumber: invoiceId.slice(0, 8),
+                  totalCents: total,
+                  currency: data.link.currency,
+                });
+                if (data.link.redirectUrl) {
+                  setTimeout(() => {
+                    window.location.href = data.link.redirectUrl!;
+                  }, 1500);
+                }
+              }}
+            />
           ) : data.stripePublishableKey && total != null ? (
             <CheckoutForm
               publishableKey={data.stripePublishableKey}
