@@ -121,34 +121,34 @@ export async function POST(
 
     // Mint a HelcimPay.js checkout session.
     //
-    // 2026-10-09 — Helcim invoiceNumber constraints we have to work around:
-    //   - Max 25 characters
-    //   - Must be UNIQUE per Helcim merchant (duplicates rejected 400)
-    //   - Alphanumeric-only in practice (hyphens get rejected sometimes)
+    // 2026-10-09 — Helcim's `invoiceNumber` validation is picky in ways
+    // their docs don't surface clearly: UUIDs, alphanumeric codes, and
+    // short refs have all returned 400 "Invalid Invoice Number" during
+    // our Synergy Data Labs test account bring-up. Simplest working
+    // configuration: OMIT invoiceNumber entirely. Helcim auto-generates
+    // an internal invoice number, the Pay modal opens, and we correlate
+    // the webhook back to our invoice via the Helcim `transactionId`
+    // we stash below after the client's success postMessage arrives.
     //
-    // So we can't just send the UUID or a prefix of it (retries on the
-    // same invoice would collide). Mint a fresh short alphanumeric code
-    // per session: "H" + base36 timestamp + 6 random base36 chars
-    // (~15 chars, pure alphanumeric, globally unique in practice), stash
-    // it on the invoice's paymentLinkRef so the webhook can match it
-    // back to our invoice without needing the UUID.
+    // We still prefill paymentLinkRef with a short local ref so the UI
+    // and reporting can show *something* human; the webhook falls back
+    // to that if no transactionId comes through for any reason.
     //
-    // customerCode omitted — Helcim auto-generates it.
-    const helcimRef =
+    // customerCode is also omitted — Helcim auto-generates it.
+    const localRef =
       "H" +
       Date.now().toString(36).toUpperCase() +
-      Math.random().toString(36).slice(2, 8).toUpperCase();
+      Math.random().toString(36).slice(2, 6).toUpperCase();
 
     await prisma.supplierInvoice.update({
       where: { id: invoice.id },
-      data: { paymentLinkRef: helcimRef },
+      data: { paymentLinkRef: localRef },
     });
 
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
-      invoiceNumber: helcimRef,
     });
 
     return NextResponse.json({
