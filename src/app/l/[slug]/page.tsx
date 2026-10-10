@@ -1473,28 +1473,22 @@ function CheckoutFormInner({
   const inFlightInvoiceIdRef = useRef<string | null>(null);
   const paidRef = useRef<boolean>(false);
 
+  // 2026-10-07: abandoned-PI cleanup — DISABLED on 2026-10-10.
+  //
+  // The original behaviour cancelled the Stripe PaymentIntent whenever
+  // the browser fired `pagehide` or `beforeunload`. For UPI payments on
+  // mobile, that fires EVERY TIME the customer switches to their UPI
+  // app (PhonePe / GPay / Paytm) to approve — so our cancel beat the
+  // customer's approval back to Stripe and killed every UPI payment.
+  //
+  // Trade-off accepted: a few extra "canceled" PaymentIntents may show
+  // up in the Stripe dashboard when test visitors close the tab without
+  // paying. That cosmetic noise is far cheaper than killing real UPI
+  // payments. Stripe auto-expires unused PaymentIntents in 24h anyway.
   useEffect(() => {
-    function cancelAbandonedPI() {
-      const invoiceId = inFlightInvoiceIdRef.current;
-      if (!invoiceId || paidRef.current) return;
-      try {
-        // sendBeacon survives tab close / navigation. Returns a
-        // boolean; we don't care about the response (and can't read
-        // it anyway on an unloading page).
-        navigator.sendBeacon(
-          `/api/pay/invoice/${invoiceId}/cancel-intent`,
-          new Blob([], { type: "text/plain" })
-        );
-      } catch {
-        // Nothing to do — the page is going away.
-      }
-    }
-    window.addEventListener("pagehide", cancelAbandonedPI);
-    window.addEventListener("beforeunload", cancelAbandonedPI);
-    return () => {
-      window.removeEventListener("pagehide", cancelAbandonedPI);
-      window.removeEventListener("beforeunload", cancelAbandonedPI);
-    };
+    // Intentional no-op. Keeping the useEffect wrapper so the removal
+    // is explicit in the diff and the hook ordering stays stable.
+    return;
   }, []);
 
   // Phase I #13 (2026-09-23) — UPI +2% surcharge preview.
