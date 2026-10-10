@@ -49,10 +49,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, ignored: "no_invoice_number" });
   }
 
-  // 2026-10-09: Helcim's invoiceNumber field is capped at 25 chars but our
-  // invoice IDs are 36-char UUIDs. The initialize call truncates to the
-  // first 25 chars, so here we recover the full invoice via a prefix
-  // match. 25 chars of a UUID is unique enough in practice (16^20 values).
+  // 2026-10-09: Resolve the invoice from Helcim's invoiceNumber field.
+  // The initialize call mints a fresh "H…" alphanumeric ref per session
+  // (Helcim rejects long UUIDs and duplicates), stashes it on the invoice
+  // as paymentLinkRef, and sends it to Helcim as invoiceNumber. So the
+  // webhook looks it up here by paymentLinkRef. Falls back to a UUID
+  // id-match and a UUID prefix-match for forwards/backwards compatibility
+  // if Helcim ever echoes something else, or for direct portal tests.
   const invoiceSelect = {
     id: true,
     supplierTenantId: true,
@@ -66,14 +69,17 @@ export async function POST(request: NextRequest) {
     paymentLinkRef: true,
   } as const;
 
-  let invoice = invoiceRef.length === 36
-    ? await prisma.supplierInvoice.findUnique({
-        where: { id: invoiceRef },
-        select: invoiceSelect,
-      })
-    : null;
+  let invoice = await prisma.supplierInvoice.findFirst({
+    where: { paymentLinkRef: invoiceRef },
+    select: invoiceSelect,
+  });
+  if (!invoice && invoiceRef.length === 36) {
+    invoice = await prisma.supplierInvoice.findUnique({
+      where: { id: invoiceRef },
+      select: invoiceSelect,
+    });
+  }
   if (!invoice) {
-    // Prefix-match the UUID string. Prisma handles the ::text cast.
     invoice = await prisma.supplierInvoice.findFirst({
       where: { id: { startsWith: invoiceRef } },
       select: invoiceSelect,

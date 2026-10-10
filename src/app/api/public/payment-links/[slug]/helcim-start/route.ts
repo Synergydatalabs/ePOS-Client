@@ -14,6 +14,7 @@
 // happen if the UI gates correctly, but defence in depth).
 
 import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 import {
   createInvoiceFromLink,
   resolveLinkBySlug,
@@ -121,20 +122,33 @@ export async function POST(
     // Mint a HelcimPay.js checkout session.
     //
     // 2026-10-09 — Helcim invoiceNumber constraints we have to work around:
-    //   - Max 25 characters (UUIDs are 36)
-    //   - Alphanumeric + hyphens
-    // Our invoice IDs are UUIDs. 25 chars of a UUID is still unique enough
-    // (20 hex chars = 16^20 ≈ 10^24 values), so we send the prefix and the
-    // webhook recovers the full invoice by prefix match on the id column.
+    //   - Max 25 characters
+    //   - Must be UNIQUE per Helcim merchant (duplicates rejected 400)
+    //   - Alphanumeric-only in practice (hyphens get rejected sometimes)
     //
-    // customerCode omitted — Helcim auto-generates it. Passing an arbitrary
-    // string returns 400 "Invalid Customer Code" (field expects CST-xxxxx).
-    const helcimInvoiceNumber = invoice.id.slice(0, 25);
+    // So we can't just send the UUID or a prefix of it (retries on the
+    // same invoice would collide). Mint a fresh short alphanumeric code
+    // per session: "H" + base36 timestamp + 6 random base36 chars
+    // (~15 chars, pure alphanumeric, globally unique in practice), stash
+    // it on the invoice's paymentLinkRef so the webhook can match it
+    // back to our invoice without needing the UUID.
+    //
+    // customerCode omitted — Helcim auto-generates it.
+    const helcimRef =
+      "H" +
+      Date.now().toString(36).toUpperCase() +
+      Math.random().toString(36).slice(2, 8).toUpperCase();
+
+    await prisma.supplierInvoice.update({
+      where: { id: invoice.id },
+      data: { paymentLinkRef: helcimRef },
+    });
+
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
-      invoiceNumber: helcimInvoiceNumber,
+      invoiceNumber: helcimRef,
     });
 
     return NextResponse.json({
