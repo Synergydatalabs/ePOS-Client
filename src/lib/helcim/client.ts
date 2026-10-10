@@ -95,37 +95,49 @@ export function verifyHelcimWebhookSignature(
 
 /**
  * Quick sanity-check that the API token is accepted by Helcim.
- * Hits `/connect/user` (a read-only identity endpoint). Returns the
- * detected environment + account info; throws on auth failure.
+ *
+ * 2026-10-09: Helcim v2 has no dedicated "whoami" endpoint. We try two
+ * safe read-only endpoints and treat any non-401 response as "token is
+ * valid" (401 is the only unambiguous auth failure signal; a 403 means
+ * the token is valid but lacks permission on that endpoint, a 404 means
+ * our path guess was wrong, and 2xx is obviously good).
  */
 export async function testHelcimApiToken(
   apiToken: string
 ): Promise<{ ok: boolean; account?: string; error?: string }> {
-  try {
-    const res = await fetch(`${HELCIM_API_BASE}/connect/user`, {
-      method: "GET",
-      headers: {
-        "api-token": apiToken,
-        Accept: "application/json",
-      },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return {
-        ok: false,
-        error: `Helcim rejected the token (${res.status}): ${text || res.statusText}`,
-      };
+  const probePaths = ["/customers?limit=1", "/payment-plans?limit=1"];
+  let lastStatus: number | null = null;
+  let lastText = "";
+  for (const path of probePaths) {
+    try {
+      const res = await fetch(`${HELCIM_API_BASE}${path}`, {
+        method: "GET",
+        headers: {
+          "api-token": apiToken,
+          Accept: "application/json",
+        },
+      });
+      lastStatus = res.status;
+      lastText = await res.text().catch(() => "");
+      if (res.status === 401) {
+        return {
+          ok: false,
+          error: "Helcim rejected the token (401 Unauthorized). Check that the token is active and has Transaction Processing enabled.",
+        };
+      }
+      // Any 2xx or a 403 (token valid, lacks permission on this endpoint)
+      // tells us the token itself is good.
+      if (res.ok || res.status === 403) {
+        return { ok: true };
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message || "Network error contacting Helcim" };
     }
-    const data: any = await res.json().catch(() => ({}));
-    const account =
-      data?.user?.business?.businessName ||
-      data?.business?.businessName ||
-      data?.businessName ||
-      undefined;
-    return { ok: true, account };
-  } catch (err: any) {
-    return { ok: false, error: err?.message || "Network error contacting Helcim" };
   }
+  return {
+    ok: false,
+    error: `Helcim probe inconclusive (last status ${lastStatus}). ${lastText || "No response body."}`.slice(0, 400),
+  };
 }
 
 /**
