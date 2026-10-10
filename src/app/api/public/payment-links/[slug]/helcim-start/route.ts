@@ -120,12 +120,14 @@ export async function POST(
 
     // Mint a HelcimPay.js checkout session. The invoice id goes into
     // `invoiceNumber` so the webhook can resolve the tenant on paid.
+    // 2026-10-09: do NOT pass customerCode — Helcim requires a pre-existing
+    // "CST-xxxx" customer code, not an arbitrary email. Omitting lets
+    // Helcim auto-generate one on the fly, which is what we want.
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
       invoiceNumber: invoice.id,
-      customerCode: emailRaw.slice(0, 60),
     });
 
     return NextResponse.json({
