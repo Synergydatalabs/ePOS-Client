@@ -140,15 +140,26 @@ export async function POST(
     // we can recompute the surcharge on every mint. Idempotent: mounting
     // again with a different method re-derives the total from
     // subtotal+tax and applies the new surcharge fresh (no drift).
+    //
+    // 2026-10-10: enforcement improvement. When the client doesn't send
+    // a paymentMethodType (common on API-created invoices where the
+    // customer may bypass our normal pay page), default to applying
+    // the UPI surcharge for INR invoices. Rationale: in India, UPI is
+    // the dominant payment method; if we don't know what they picked,
+    // assume UPI and surcharge accordingly. The breakdown line on the
+    // pay page shows the fee so customers see it before confirming.
     const paymentMethodType =
       typeof body?.paymentMethodType === "string"
         ? body.paymentMethodType.toLowerCase()
         : "";
+    const isINR = invoice.currency.toUpperCase() === "INR";
+    const effectivePmType =
+      paymentMethodType || (isINR ? "upi" : "");
     const base = invoice.subtotalCents + invoice.taxCents;
     const surchargeCents =
-      paymentMethodType === "upi" ? Math.round((base * 200) / 10_000) : 0;
+      effectivePmType === "upi" ? Math.round((base * 200) / 10_000) : 0;
     const surchargeLabel =
-      paymentMethodType === "upi" ? "Platform fee (2% UPI)" : null;
+      effectivePmType === "upi" ? "Platform fee (2% UPI)" : null;
     const chargedTotalCents = base + surchargeCents;
     if (
       surchargeCents !== invoice.surchargeCents ||

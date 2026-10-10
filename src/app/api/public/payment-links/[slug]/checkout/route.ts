@@ -166,13 +166,20 @@ export async function POST(
     // The /l/[slug] page previews this client-side and sends the picked
     // method type back on submit; the server applies the same rule so
     // the invoice + Stripe PI amount match.
+    //
+    // 2026-10-10: enforcement improvement. When no paymentMethodType is
+    // sent AND currency is INR, default to UPI (since UPI dominates in
+    // India and skipping the surcharge was leaving money on the table).
     const paymentMethodType =
       typeof body.paymentMethodType === "string"
         ? body.paymentMethodType.toLowerCase()
         : "";
-    const surchargeBps = paymentMethodType === "upi" ? 200 : 0;
+    const linkIsINR = String(body.currency || "").toUpperCase() === "INR";
+    const effectivePmType =
+      paymentMethodType || (linkIsINR ? "upi" : "");
+    const surchargeBps = effectivePmType === "upi" ? 200 : 0;
     const surchargeLabel =
-      paymentMethodType === "upi" ? "Platform fee (2% UPI)" : null;
+      effectivePmType === "upi" ? "Platform fee (2% UPI)" : null;
 
     const invoice = await createInvoiceFromLink({
       slug,
