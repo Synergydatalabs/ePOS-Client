@@ -121,34 +121,29 @@ export async function POST(
 
     // Mint a HelcimPay.js checkout session.
     //
-    // 2026-10-09 — Helcim's `invoiceNumber` validation is picky in ways
-    // their docs don't surface clearly: UUIDs, alphanumeric codes, and
-    // short refs have all returned 400 "Invalid Invoice Number" during
-    // our Synergy Data Labs test account bring-up. Simplest working
-    // configuration: OMIT invoiceNumber entirely. Helcim auto-generates
-    // an internal invoice number, the Pay modal opens, and we correlate
-    // the webhook back to our invoice via the Helcim `transactionId`
-    // we stash below after the client's success postMessage arrives.
+    // 2026-10-09 — Helcim's `invoiceNumber` field expects their own
+    // format: `INV` + numeric digits (e.g. INV1000, INV1760061234567).
+    // Anything else — UUIDs, alphanumeric codes with letters mixed in,
+    // short refs — returns 400 "Invalid Invoice Number". So we build
+    // one from a timestamp: "INV" + Date.now() → 16 chars, pure digits
+    // after the INV prefix, globally unique per call.
     //
-    // We still prefill paymentLinkRef with a short local ref so the UI
-    // and reporting can show *something* human; the webhook falls back
-    // to that if no transactionId comes through for any reason.
+    // Stashed on invoice.paymentLinkRef so the webhook can match it
+    // back to the right invoice.
     //
-    // customerCode is also omitted — Helcim auto-generates it.
-    const localRef =
-      "H" +
-      Date.now().toString(36).toUpperCase() +
-      Math.random().toString(36).slice(2, 6).toUpperCase();
+    // customerCode omitted — Helcim auto-generates it.
+    const helcimRef = "INV" + Date.now().toString();
 
     await prisma.supplierInvoice.update({
       where: { id: invoice.id },
-      data: { paymentLinkRef: localRef },
+      data: { paymentLinkRef: helcimRef },
     });
 
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
+      invoiceNumber: helcimRef,
     });
 
     return NextResponse.json({
