@@ -1963,39 +1963,41 @@ function Shell({
             background: `linear-gradient(180deg, ${brandColor} 0%, ${brandColor}F5 55%, #F8F6F1 100%)`,
           }}
         >
-          <div className="max-w-3xl mx-auto px-4 pt-10 pb-14 text-center">
-            <div
-              className="inline-flex items-center justify-center rounded-full bg-white/95 mb-5"
+          <div className="max-w-3xl mx-auto px-4 pt-10 pb-16 text-center">
+            {/* 2026-10-09: no circle wrapper — the merchant's logo is a
+                 non-transparent JPG, so a white circle just frames an
+                 ugly square. Display the image directly, generously
+                 sized, with a soft drop shadow for depth against the
+                 brand-coloured gradient. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={brandLogoUrl!}
+              alt={brandName || merchantName || "Brand"}
               style={{
-                width: 92,
-                height: 92,
-                boxShadow: "0 12px 32px -8px rgba(0,0,0,0.25)",
+                display: "inline-block",
+                maxHeight: 120,
+                maxWidth: "70%",
+                height: "auto",
+                width: "auto",
+                objectFit: "contain",
+                borderRadius: 12,
+                filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.28))",
+                marginBottom: 20,
               }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={brandLogoUrl!}
-                alt={brandName || merchantName || "Brand"}
-                style={{
-                  maxWidth: 72,
-                  maxHeight: 72,
-                  objectFit: "contain",
-                }}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            </div>
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
             {(brandName || merchantName) && (
               <h1
                 style={{
                   fontFamily: "'Playfair Display', Georgia, serif",
-                  fontSize: "30px",
+                  fontSize: "32px",
                   fontWeight: 700,
                   color: "#FFFFFF",
                   letterSpacing: "0.01em",
                   margin: 0,
-                  textShadow: "0 2px 10px rgba(0,0,0,0.18)",
+                  textShadow: "0 2px 10px rgba(0,0,0,0.22)",
                 }}
               >
                 {brandName || merchantName}
@@ -2003,11 +2005,12 @@ function Shell({
             )}
             <p
               style={{
-                marginTop: 6,
-                fontSize: "12px",
-                color: "rgba(255,255,255,0.85)",
-                letterSpacing: "0.14em",
+                marginTop: 8,
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.88)",
+                letterSpacing: "0.18em",
                 textTransform: "uppercase",
+                fontWeight: 500,
               }}
             >
               Secure Checkout
