@@ -148,6 +148,14 @@ export async function GET(
         // Stripe PaymentElement accordion order on the pay page — the
         // method named here expands first; everything else collapses.
         preferredPaymentMethod: link.supplier?.settings?.preferredPaymentMethod ?? null,
+        // 2026-10-09: full brand customisation. When the tenant hides the
+        // MEGO chrome (poweredByVisible=false) we render a brand header
+        // using these fields instead. brandLogoUrl can be any public URL
+        // (uploaded S3, /public/images/..., or external). brandPrimaryColor
+        // is a 7-char hex applied to the Pay button + accents + hero band.
+        brandLogoUrl: link.supplier?.settings?.brandLogoUrl ?? null,
+        brandName: link.supplier?.settings?.brandName ?? null,
+        brandPrimaryColor: link.supplier?.settings?.brandPrimaryColor ?? null,
       },
       // For Elements upfront-mount on the checkout page. Null = supplier
       // has no Stripe → checkout falls back to redirect / mock-pay.

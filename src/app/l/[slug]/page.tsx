@@ -114,6 +114,12 @@ interface LinkData {
     // 2026-10-06: per-tenant preferred payment method on the Stripe
     // PaymentElement. "upi" / "card" / null. Null = Stripe default order.
     preferredPaymentMethod?: string | null;
+    // 2026-10-09: full brand customisation. When poweredByVisible is false
+    // AND brandLogoUrl is set, Shell renders a bespoke brand header +
+    // uses brandPrimaryColor for accents + Pay buttons.
+    brandLogoUrl?: string | null;
+    brandName?: string | null;
+    brandPrimaryColor?: string | null;
   };
   // Phase I #2e: supplier's Stripe publishable key. Null when the supplier
   // has no Stripe processor — checkout falls back to the redirect flow.
@@ -681,6 +687,9 @@ export default function PaymentLinkCheckout() {
           : null
       }
       showPlatformChrome={!embedMode && data.merchant.poweredByVisible !== false}
+      brandLogoUrl={data.merchant.brandLogoUrl}
+      brandName={data.merchant.brandName}
+      brandPrimaryColor={data.merchant.brandPrimaryColor}
     >
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Amount due — mirrors the invoice pay page's hero panel. Facts
@@ -1182,7 +1191,7 @@ export default function PaymentLinkCheckout() {
                 onClick={submit}
                 disabled={submitting || !allAccepted || (!!terms && !typedName.trim())}
                 className="w-full py-3 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: MEGO_BLUE }}
+                style={{ backgroundColor: data.merchant.brandPrimaryColor || MEGO_BLUE }}
               >
                 {submitting
                   ? "Preparing checkout…"
@@ -1830,13 +1839,25 @@ function Shell({
   // (tenant_settings.powered_by_visible). Header, footer, and the
   // "Sold on hub by MEGO" caption all collapse to a neutral surface.
   showPlatformChrome = true,
+  // 2026-10-09: full brand customisation. When brandLogoUrl is set AND
+  // the MEGO chrome is hidden, we render a bespoke brand hero (large
+  // centered logo on a brand-coloured band, elegant typography) in
+  // place of both the MEGO navy header and the empty neutral surface.
+  brandLogoUrl,
+  brandName,
+  brandPrimaryColor,
 }: {
   children: React.ReactNode;
   merchantName?: string;
   logoUrl?: string | null;
   poweredBy?: string | null;
   showPlatformChrome?: boolean;
+  brandLogoUrl?: string | null;
+  brandName?: string | null;
+  brandPrimaryColor?: string | null;
 }) {
+  const hasBrandHero = !showPlatformChrome && !!brandLogoUrl;
+  const brandColor = brandPrimaryColor || "#17301F";
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -1931,14 +1952,74 @@ function Shell({
       )}
 
       {/* 2026-10-07: when the supplier has opted out of MEGO chrome
-           (powered_by_visible = false) we render NO header — just the
-           clean checkout card centered on the page. The merchant name
-           still appears inside the card (on the Pay button, in the
-           total line, on the T&C row), so hiding this strip loses
-           nothing. If the supplier wants a logo visible, we'll move
-           it inside the card instead of back at the top. */}
+           (powered_by_visible = false) we render NO default header.
+           2026-10-09: if the supplier has set a brand logo, we render
+           a bespoke brand hero band here instead — large logo centered
+           on a brand-coloured gradient, elegant serif brand name,
+           soft shadow leading into the checkout card below. */}
+      {hasBrandHero && (
+        <header
+          style={{
+            background: `linear-gradient(180deg, ${brandColor} 0%, ${brandColor}F5 55%, #F8F6F1 100%)`,
+          }}
+        >
+          <div className="max-w-3xl mx-auto px-4 pt-10 pb-14 text-center">
+            <div
+              className="inline-flex items-center justify-center rounded-full bg-white/95 mb-5"
+              style={{
+                width: 92,
+                height: 92,
+                boxShadow: "0 12px 32px -8px rgba(0,0,0,0.25)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={brandLogoUrl!}
+                alt={brandName || merchantName || "Brand"}
+                style={{
+                  maxWidth: 72,
+                  maxHeight: 72,
+                  objectFit: "contain",
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            </div>
+            {(brandName || merchantName) && (
+              <h1
+                style={{
+                  fontFamily: "'Playfair Display', Georgia, serif",
+                  fontSize: "30px",
+                  fontWeight: 700,
+                  color: "#FFFFFF",
+                  letterSpacing: "0.01em",
+                  margin: 0,
+                  textShadow: "0 2px 10px rgba(0,0,0,0.18)",
+                }}
+              >
+                {brandName || merchantName}
+              </h1>
+            )}
+            <p
+              style={{
+                marginTop: 6,
+                fontSize: "12px",
+                color: "rgba(255,255,255,0.85)",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+              }}
+            >
+              Secure Checkout
+            </p>
+          </div>
+        </header>
+      )}
 
-      <main className="flex-1 py-8 px-4">
+      <main
+        className="flex-1 py-8 px-4"
+        style={hasBrandHero ? { background: "#F8F6F1", marginTop: -40 } : undefined}
+      >
         <div className="max-w-2xl mx-auto">{children}</div>
       </main>
 
