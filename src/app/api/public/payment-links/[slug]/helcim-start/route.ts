@@ -118,16 +118,23 @@ export async function POST(
       console.warn("[HELCIM-START] T&C recording failed (continuing):", termsErr);
     }
 
-    // Mint a HelcimPay.js checkout session. The invoice id goes into
-    // `invoiceNumber` so the webhook can resolve the tenant on paid.
-    // 2026-10-09: do NOT pass customerCode — Helcim requires a pre-existing
-    // "CST-xxxx" customer code, not an arbitrary email. Omitting lets
-    // Helcim auto-generate one on the fly, which is what we want.
+    // Mint a HelcimPay.js checkout session.
+    //
+    // 2026-10-09 — Helcim invoiceNumber constraints we have to work around:
+    //   - Max 25 characters (UUIDs are 36)
+    //   - Alphanumeric + hyphens
+    // Our invoice IDs are UUIDs. 25 chars of a UUID is still unique enough
+    // (20 hex chars = 16^20 ≈ 10^24 values), so we send the prefix and the
+    // webhook recovers the full invoice by prefix match on the id column.
+    //
+    // customerCode omitted — Helcim auto-generates it. Passing an arbitrary
+    // string returns 400 "Invalid Customer Code" (field expects CST-xxxxx).
+    const helcimInvoiceNumber = invoice.id.slice(0, 25);
     const session = await initializeHelcimCheckout({
       apiToken: creds.apiToken,
       amount: invoice.totalCents / 100,
       currency: invoice.currency,
-      invoiceNumber: invoice.id,
+      invoiceNumber: helcimInvoiceNumber,
     });
 
     return NextResponse.json({

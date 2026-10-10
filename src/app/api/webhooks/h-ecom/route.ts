@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const invoiceId = String(event?.data?.invoiceNumber || "").trim();
-  if (!invoiceId) {
+  const invoiceRef = String(event?.data?.invoiceNumber || "").trim();
+  if (!invoiceRef) {
     // Live tests from the Helcim portal arrive with no invoice number.
     // Accept silently so Helcim stops retrying; log for debugging.
     console.warn("[HELCIM-WEBHOOK] no invoiceNumber — ignored", {
@@ -49,24 +49,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, ignored: "no_invoice_number" });
   }
 
-  // Resolve the invoice (and the paymentLinkId needed for outbound webhooks).
-  const invoice = await prisma.supplierInvoice.findUnique({
-    where: { id: invoiceId },
-    select: {
-      id: true,
-      supplierTenantId: true,
-      invoiceNumber: true,
-      paymentStatus: true,
-      totalCents: true,
-      currency: true,
-      customerEmail: true,
-      customerName: true,
-      paymentLinkId: true,
-      paymentLinkRef: true,
-    },
-  });
+  // 2026-10-09: Helcim's invoiceNumber field is capped at 25 chars but our
+  // invoice IDs are 36-char UUIDs. The initialize call truncates to the
+  // first 25 chars, so here we recover the full invoice via a prefix
+  // match. 25 chars of a UUID is unique enough in practice (16^20 values).
+  const invoiceSelect = {
+    id: true,
+    supplierTenantId: true,
+    invoiceNumber: true,
+    paymentStatus: true,
+    totalCents: true,
+    currency: true,
+    customerEmail: true,
+    customerName: true,
+    paymentLinkId: true,
+    paymentLinkRef: true,
+  } as const;
+
+  let invoice = invoiceRef.length === 36
+    ? await prisma.supplierInvoice.findUnique({
+        where: { id: invoiceRef },
+        select: invoiceSelect,
+      })
+    : null;
   if (!invoice) {
-    console.warn("[HELCIM-WEBHOOK] invoice not found", { invoiceId });
+    // Prefix-match the UUID string. Prisma handles the ::text cast.
+    invoice = await prisma.supplierInvoice.findFirst({
+      where: { id: { startsWith: invoiceRef } },
+      select: invoiceSelect,
+    });
+  }
+  if (!invoice) {
+    console.warn("[HELCIM-WEBHOOK] invoice not found", { invoiceRef });
     return NextResponse.json({ received: true, ignored: "invoice_not_found" });
   }
 
