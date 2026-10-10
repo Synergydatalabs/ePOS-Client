@@ -198,7 +198,29 @@ export async function POST(request: NextRequest) {
       status: "ACTIVE",
     });
   } catch (error: any) {
+    // 2026-10-09: surface the real reason so the UI shows something
+    // actionable instead of a generic "Failed to save". The three usual
+    // suspects on fresh deploys:
+    //   - KYB_ENCRYPTION_KEY env var missing (kybEncryptJson throws)
+    //   - PaymentProcessor enum doesn't include HELCIM in Postgres yet
+    //     (Prisma P2032 / "invalid input value for enum")
+    //   - DB connection error
+    const raw = String(error?.message || error || "unknown");
+    const code = error?.code ? ` [${error.code}]` : "";
     console.error("[SUPPLIER-SETTINGS-HELCIM] POST error:", error);
-    return NextResponse.json({ error: "Failed to save Helcim settings" }, { status: 500 });
+
+    let hint = "";
+    if (/KYB_ENCRYPTION_KEY/i.test(raw)) {
+      hint =
+        " — The server is missing KYB_ENCRYPTION_KEY. Ask ops to set it on the itap-app environment and restart.";
+    } else if (/HELCIM|invalid input value for enum|P2032/i.test(raw)) {
+      hint =
+        " — The PaymentProcessor enum in Postgres doesn't include HELCIM yet. Run: ALTER TYPE \"PaymentProcessor\" ADD VALUE IF NOT EXISTS 'HELCIM';";
+    }
+
+    return NextResponse.json(
+      { error: `Failed to save Helcim settings${code}: ${raw.slice(0, 300)}${hint}` },
+      { status: 500 }
+    );
   }
 }
