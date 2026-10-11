@@ -33,6 +33,7 @@
   .placeholder { background: #FEF3C7; color: #78350F; font-weight: 700; padding: 0 3pt; border-radius: 2pt; }
   .option-tag { display: inline-block; background: #17301F; color: #FEE500; font-weight: 700; padding: 1pt 6pt; border-radius: 10pt; font-size: 9pt; margin-right: 5pt; letter-spacing: 0.3pt; }
   .option-tag.b { background: #FEE500; color: #17301F; }
+  .new-tag { display: inline-block; background: #10B981; color: #fff; font-weight: 700; padding: 1pt 5pt; border-radius: 3pt; font-size: 8pt; margin-left: 4pt; letter-spacing: 0.3pt; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -41,7 +42,7 @@
   <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(-32 32 32)"><ellipse cx="32" cy="32" rx="18.5" ry="27" fill="#6B3E26"/><path d="M32 5.5c-9 11 9 22 0 33.5-5 6.5-2.5 13 0 19" fill="none" stroke="#E0A526" stroke-width="4.2" stroke-linecap="round"/></g></svg>
   <h1><span class="brand">Indian Beans</span> Payments API — Korean Integration Guide</h1>
 </div>
-<p class="meta">Accept KakaoPay payments on your Korean site · API host: <code>https://indianbeans.com</code></p>
+<p class="meta">Accept KakaoPay payments on your Korean site · API host: <code>https://indianbeans.com</code> · Rev. 2026-10-11</p>
 
 <h2>Two integration options</h2>
 <p>Pick whichever matches your business flow. The API is the same for both; one request field (<code>qr_mode</code>) switches the UX.</p>
@@ -74,7 +75,7 @@
   -H "Authorization: Bearer <span class="placeholder">YOUR_API_KEY</span>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 100000,
+    "amount": 1000,
     "currency": "KRW",
     "payment_methods": ["kakao_pay"],
     "qr": true,
@@ -85,17 +86,21 @@
     "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
   }'</code></pre>
 
+<div class="ok">
+<strong>Amounts in native units for KRW / JPY / VND.</strong> Pass the real amount — <code>1000</code> means ₩1,000, <code>5000</code> means ₩5,000. No multiplication by 100. (For USD / EUR / CAD, pass cents as usual: <code>500</code> = $5.00.)
+</div>
+
 <p><strong>Response (201 Created):</strong></p>
 <pre><code>{
   "id":           "cmg...",
   "status":       "created",
-  "amount":       100000,
+  "amount":       1000,
   "currency":     "krw",
   "qr_mode":      "auto_kakao",
   "checkout_url": "https://indianbeans.com/l/AbCdEfGh?auto=kakao",
   "qr_data_url":  "data:image/png;base64,iVBORw0KGgoAA...",
   "link_slug":    "AbCdEfGh",
-  "created_at":   "2026-10-09T12:34:56Z"
+  "created_at":   "2026-10-11T12:34:56Z"
 }</code></pre>
 
 <h3>Step B2 · Display the QR to the customer</h3>
@@ -118,7 +123,7 @@ Content-Type: application/json
 
 {
   "event":    "payment.succeeded",
-  "payment": { "id": "cmg...", "amount": 100000, "currency": "krw",
+  "payment": { "id": "cmg...", "amount": 1000, "currency": "krw",
                "status": "paid", "method": "kakao_pay" },
   "metadata": { "order_id": "<span class="placeholder">YOUR_ORDER_ID</span>" }
 }</code></pre>
@@ -127,7 +132,70 @@ Content-Type: application/json
 <strong>Why email isn&apos;t required:</strong> walk-in customers don&apos;t supply one. KakaoPay sends its own receipt in-app, so we only need an email for the server-side invoice record. The one in <code>customer.email</code> above should be a merchant-side address (e.g. POS, accounting) — never a fabricated customer email.
 </div>
 
-<p class="footer">Page 1 / 3 · Confidential — share with your integration developer only</p>
+<p class="footer">Page 1 / 4 · Confidential — share with your integration developer only</p>
+<div class="page-break"></div>
+
+<h2>B2B Tax Exemption<span class="new-tag">NEW · 2026-10-11</span></h2>
+<p>By default KakaoPay payments are taxed at the standard Korean rate. For business buyers who provide a valid <strong>사업자등록번호 (Business Registration Number)</strong>, you can zero-rate the invoice by including the business details in the QR URL. Paddle validates the number and applies the exemption automatically.</p>
+
+<h3>How it works</h3>
+<p>The response's <code>checkout_url</code> is a QR URL ending with <code>?auto=kakao</code>. For a business buyer, append two extra query parameters:</p>
+
+<ul>
+  <li><code>bizName</code> — URL-encoded business name</li>
+  <li><code>taxId</code> — Korean 사업자등록번호 (with or without dashes)</li>
+</ul>
+
+<p><strong>Example — individual (standard, taxed):</strong></p>
+<pre><code>https://indianbeans.com/l/AbCdEfGh?auto=kakao</code></pre>
+
+<p><strong>Example — business (tax-exempt):</strong></p>
+<pre><code>https://indianbeans.com/l/AbCdEfGh?auto=kakao
+  &bizName=Customer%20Company%20Ltd
+  &taxId=123-45-67890</code></pre>
+
+<h3>Two ways to add it</h3>
+
+<p><strong>1. Your server appends it before generating the QR</strong> (recommended):</p>
+<pre><code>// Mint the payment link
+const res = await fetch('https://indianbeans.com/api/public/v1/payments', { ... });
+const { checkout_url } = await res.json();
+
+// For a business buyer, append their details to the URL
+const businessUrl = `${checkout_url}` +
+  `&bizName=${encodeURIComponent(business.name)}` +
+  `&taxId=${encodeURIComponent(business.taxId)}`;
+
+// Generate the QR from businessUrl instead of checkout_url
+const qrPng = await generateQR(businessUrl);</code></pre>
+
+<p><strong>2. Hand-coded QR for a single long-standing business customer:</strong> generate the URL once with the business params baked in, print the QR, display it at their office. Every scan from that QR is tax-exempt. For your other walk-in customers, keep using the standard QR without the extra params.</p>
+
+<div class="warn">
+<strong>Important: the <code>qr_data_url</code> in the API response is NOT the right QR for B2B.</strong> Our API generates it from the base <code>checkout_url</code> only — it has no way to know what business params you&apos;re going to append. For a B2B QR you must:
+<ol style="margin-top:4pt;">
+  <li>Call the API as usual and keep the <code>checkout_url</code> value.</li>
+  <li>Append <code>&amp;bizName=...&amp;taxId=...</code> to that URL.</li>
+  <li>Encode the <strong>final URL</strong> as a QR yourself (any QR library, or an online generator such as <code>api.qrserver.com/v1/create-qr-code/</code>).</li>
+</ol>
+The <code>qr_data_url</code> field is only useful for the standard consumer flow.
+</div>
+
+<h3>Important rules</h3>
+<div class="warn">
+<strong>Only use the business QR for actual business buyers.</strong> Using tax-exempt URLs for consumer payments creates incorrect records in Korean tax law. One business → one dedicated QR. Walk-in consumers → the standard QR without <code>bizName</code>/<code>taxId</code>.
+</div>
+
+<div class="note">
+<strong>Validation is silent.</strong> Paddle validates the tax ID but does not error when it's invalid — it silently applies the standard tax instead. Always verify the first payment from any new business QR to confirm the invoice is zero-rated before committing to it in production.
+</div>
+
+<p><strong>Both parameters must be present together.</strong> Passing only <code>bizName</code> or only <code>taxId</code> is ignored — the flow falls back to the standard taxed payment.</p>
+
+<h3>Existing QRs</h3>
+<p><strong>No change required.</strong> Any QR already issued without the business params continues to work exactly as before. The B2B exemption is purely additive — enable it only for the specific business customers who have provided their tax ID.</p>
+
+<p class="footer">Page 2 / 4 · <span class="brand">Indian Beans</span> Payments API</p>
 <div class="page-break"></div>
 
 <h2><span class="option-tag">Option A</span> Iframe embed flow</h2>
@@ -138,7 +206,7 @@ Content-Type: application/json
   -H "Authorization: Bearer <span class="placeholder">YOUR_API_KEY</span>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 100000,
+    "amount": 1000,
     "currency": "KRW",
     "payment_methods": ["kakao_pay"],
     "customer": {
@@ -183,7 +251,7 @@ Content-Type: application/json
 &lt;/script&gt;</code></pre>
 
 <h3>Step A3 · Receive the webhook</h3>
-<p>Same shape as Option B. See <strong>Step B3</strong> on the previous page.</p>
+<p>Same shape as Option B. See <strong>Step B3</strong>.</p>
 
 <div class="note">
 <strong>Why both postMessage + webhook?</strong> The <code>postMessage</code> is instant UI feedback for the customer in the iframe. The webhook is the authoritative server-to-server confirmation — always mark orders paid from the webhook, never only from the browser message.
@@ -194,7 +262,7 @@ Content-Type: application/json
 <h3>Request fields — POST /api/public/v1/payments</h3>
 <table>
   <tr><th style="width:28%">Field</th><th>Type</th><th>Notes</th></tr>
-  <tr><td><code>amount</code></td><td>integer</td><td>Smallest unit (₩ for KRW — pass whole won; cents for USD). <strong>Required.</strong></td></tr>
+  <tr><td><code>amount</code></td><td>integer</td><td><strong>Zero-decimal currencies (KRW, JPY, VND):</strong> native units — <code>1000</code> means ₩1,000. <strong>Sub-unit currencies (USD, CAD, EUR, INR):</strong> smallest unit — <code>500</code> means $5.00. <strong>Required.</strong></td></tr>
   <tr><td><code>currency</code></td><td>string</td><td>ISO 4217 code. KRW, USD, CAD, EUR, etc.</td></tr>
   <tr><td><code>payment_methods</code></td><td>string[]</td><td><code>["kakao_pay"]</code>. (Also supports <code>["paypal"]</code>, <code>["alipay"]</code>.)</td></tr>
   <tr><td><code>qr</code></td><td>boolean</td><td><code>true</code> → <code>qr_data_url</code> included in response.</td></tr>
@@ -206,8 +274,17 @@ Content-Type: application/json
   <tr><td><code>metadata</code></td><td>object</td><td>Any JSON. Echoed in the webhook payload.</td></tr>
 </table>
 
-<p class="footer">Page 2 / 3 · <span class="brand">Indian Beans</span> Payments API</p>
+<p class="footer">Page 3 / 4 · <span class="brand">Indian Beans</span> Payments API</p>
 <div class="page-break"></div>
+
+<h3>QR URL query parameters (append to <code>checkout_url</code>)</h3>
+<table>
+  <tr><th style="width:22%">Parameter</th><th>When used</th><th>Notes</th></tr>
+  <tr><td><code>auto=kakao</code></td><td>Option B (QR walk-in)</td><td>Set automatically by our API when <code>qr_mode: "auto_kakao"</code>.</td></tr>
+  <tr><td><code>embed=1</code></td><td>Option A (iframe)</td><td>Hides page chrome, enables <code>postMessage</code>.</td></tr>
+  <tr><td><code>bizName</code> <span class="new-tag">NEW</span></td><td>B2B tax exemption</td><td>URL-encoded business name. Must be present together with <code>taxId</code>.</td></tr>
+  <tr><td><code>taxId</code> <span class="new-tag">NEW</span></td><td>B2B tax exemption</td><td>Korean 사업자등록번호 (BRN). Dashes optional. Paddle validates and zero-rates when recognised.</td></tr>
+</table>
 
 <h3>Response fields</h3>
 <table>
@@ -225,7 +302,7 @@ Content-Type: application/json
   "type":          "payment:succeeded",
   "invoiceId":     "cmg...",
   "invoiceNumber": "INV-2026-0042",
-  "amountCents":   100000,
+  "amountCents":   1000,
   "currency":      "KRW"
 }</code></pre>
 
@@ -237,7 +314,7 @@ Content-Type: application/json
   "event":    "payment.succeeded" | "payment.failed",
   "payment": {
     "id":       "cmg...",
-    "amount":   100000,
+    "amount":   1000,
     "currency": "krw",
     "status":   "paid" | "failed",
     "method":   "kakao_pay"
@@ -265,10 +342,17 @@ Content-Type: application/json
   <li>Complete a test payment with a real Korean phone + KakaoPay. Confirm your parent-window listener fires and your webhook receives the event.</li>
 </ul>
 
+<h3>B2B tax exemption <span class="new-tag">NEW</span></h3>
+<ul>
+  <li>Generate a QR URL with <code>?auto=kakao&amp;bizName=TestBiz&amp;taxId=123-45-67890</code>.</li>
+  <li>Scan and complete a small test payment with a real Korean 사업자등록번호 you control.</li>
+  <li>Verify the invoice line in the KakaoPay app receipt shows the amount <strong>without</strong> VAT added. If VAT still appears, the tax ID wasn&apos;t validated — double-check the number and try again.</li>
+</ul>
+
 <h2>Minimum amounts &amp; limits</h2>
 <ul>
   <li><strong>KRW minimum per transaction:</strong> ~₩1,000. Smaller amounts are rejected by Paddle with a &ldquo;transaction balance less than minimum&rdquo; error.</li>
-  <li>Amounts are integers in the currency&apos;s smallest unit. For KRW that&apos;s whole won (no decimals). For USD / CAD / EUR that&apos;s cents.</li>
+  <li>Amounts are integers. For zero-decimal currencies (KRW, JPY, VND) pass native units — ₩1,000 is <code>1000</code>. For sub-unit currencies (USD, EUR, CAD, INR) pass the smallest unit — $5.00 is <code>500</code>.</li>
   <li>One payment request = one single-use session. Create a new one per order.</li>
 </ul>
 
@@ -279,7 +363,7 @@ Content-Type: application/json
 <h2>Support</h2>
 <p>Technical questions: <code>hello@indianbeans.com</code> · Response within one business day. Include your API key prefix (first 10 chars) and the <code>id</code> from the response.</p>
 
-<p class="footer">Page 3 / 3 · <span class="brand">Indian Beans</span> Payments API · indianbeans.com</p>
+<p class="footer">Page 4 / 4 · <span class="brand">Indian Beans</span> Payments API · indianbeans.com · Rev. 2026-10-11</p>
 
 </body>
 </html>

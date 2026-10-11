@@ -273,9 +273,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 5) Spawn an ephemeral single-use payment link carrying the partner's
-  // webhook config. maxUses=1 + apiGenerated=true hide it from the portal
-  // list and prevent re-use after this one invoice is fulfilled.
+  // 5) Spawn an API-generated payment link carrying the partner's
+  // webhook config. apiGenerated=true hides it from the portal list.
+  //
+  // 2026-10-11: default maxUses bumped 1 → 100 so a single QR can serve
+  // repeat customers (same amount, up to 100 payments). Caller can override
+  // by passing `max_uses` in the request body (integer 1–10000, or 0 for
+  // unlimited). The call-once-per-sale pattern still works by setting
+  // max_uses: 1 explicitly.
+  const requestedMaxUses = (body as any)?.max_uses;
+  let maxUsesForLink: number | null = 100;
+  if (requestedMaxUses === 0 || requestedMaxUses === null) {
+    maxUsesForLink = null; // unlimited
+  } else if (typeof requestedMaxUses === "number" && Number.isFinite(requestedMaxUses)) {
+    const clamped = Math.max(1, Math.min(10000, Math.floor(requestedMaxUses)));
+    maxUsesForLink = clamped;
+  }
+
   const link = await createPaymentLink({
     supplierTenantId: tenantId,
     nickname: description ? description.slice(0, 120) : `API payment ${new Date().toISOString()}`,
@@ -286,7 +300,7 @@ export async function POST(request: NextRequest) {
     qtyDefault: 1,
     qtyMin: 1,
     qtyMax: 1,
-    maxUses: 1,
+    maxUses: maxUsesForLink,
     partnerRef: typeof metadata.order_id === "string" ? metadata.order_id.slice(0, 120) : null,
     descriptionOverride: description,
     requireName: false,
