@@ -272,7 +272,12 @@ The <code>qr_data_url</code> field is only useful for the standard consumer flow
   <tr><td><code>description</code></td><td>string</td><td>≤ 500 chars. Shown on the Paddle hosted checkout page.</td></tr>
   <tr><td><code>webhook_url</code></td><td>string</td><td>HTTPS. Where we POST on payment events.</td></tr>
   <tr><td><code>metadata</code></td><td>object</td><td>Any JSON. Echoed in the webhook payload.</td></tr>
+  <tr><td><code>max_uses</code> <span class="new-tag">NEW</span></td><td>integer</td><td>How many times this payment link can be used (same amount). Default <strong>100</strong>. Pass <code>1</code> for strict single-use (one payment per API call). Pass <code>0</code> or <code>null</code> for unlimited. Clamped to 1–10000 otherwise.</td></tr>
 </table>
+
+<div class="note">
+<strong>Reusability.</strong> One API call returns one link that can be paid up to <code>max_uses</code> times at the same amount. For walk-in POS where each sale has a different amount, keep the one-call-per-sale pattern (default 100 is still safe — unused slots simply expire). For a dedicated business QR where the customer pays the same amount repeatedly, 100 lets you reuse the same QR across all their payments.
+</div>
 
 <p class="footer">Page 3 / 4 · <span class="brand">Indian Beans</span> Payments API</p>
 <div class="page-break"></div>
@@ -353,7 +358,7 @@ Content-Type: application/json
 <ul>
   <li><strong>KRW minimum per transaction:</strong> ~₩1,000. Smaller amounts are rejected by Paddle with a &ldquo;transaction balance less than minimum&rdquo; error.</li>
   <li>Amounts are integers. For zero-decimal currencies (KRW, JPY, VND) pass native units — ₩1,000 is <code>1000</code>. For sub-unit currencies (USD, EUR, CAD, INR) pass the smallest unit — $5.00 is <code>500</code>.</li>
-  <li>One payment request = one single-use session. Create a new one per order.</li>
+  <li>One payment request returns one link that defaults to <strong>100 payments max</strong> at the same amount. Override with the <code>max_uses</code> field (<code>1</code> for strict single-use, <code>0</code> for unlimited).</li>
 </ul>
 
 <div class="warn">

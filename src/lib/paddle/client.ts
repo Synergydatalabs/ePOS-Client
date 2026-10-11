@@ -151,6 +151,18 @@ export async function createPaddleTransaction(
     );
   }
 
+  // 2026-10-11: Tax mode switches when B2B. Paddle's default
+  // "account_setting" (tax-inclusive / "external") treats our price as
+  // "total containing VAT" — exempt B2B customers then see the price
+  // MINUS the would-be-VAT (₩35,000 → ₩31,818). That's not what the
+  // merchant wants: the price they set should be what the customer pays.
+  //
+  // For B2B we switch to "internal" (tax-exclusive): price is net, tax
+  // is added on top. Since the business is exempt, no tax is added and
+  // the customer pays exactly the amount we sent. Consumer flow stays
+  // on the account default so inclusive-pricing behaviour is unchanged.
+  const taxMode = input.business ? "internal" : "account_setting";
+
   const body: Record<string, unknown> = {
     items: [
       {
@@ -165,7 +177,7 @@ export async function createPaddleTransaction(
           },
           billing_cycle: null, // one-time charge, not a subscription
           trial_period: null,
-          tax_mode: "account_setting" as const,
+          tax_mode: taxMode as "account_setting" | "internal" | "external",
         },
       },
     ],
