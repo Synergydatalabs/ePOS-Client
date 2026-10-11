@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyPaddleSignature } from "@/lib/paddle/webhook";
+import { apiAmountToInternalCents } from "@/lib/currency/zero-decimal";
 
 export async function POST(request: NextRequest) {
   // Read the raw body FIRST — HMAC is over the exact bytes Paddle sent,
@@ -75,7 +76,11 @@ export async function POST(request: NextRequest) {
     data?.payments?.[0]?.methodDetails?.type ||
     "paddle";
 
-  const amountPaidCents = Number(data?.details?.totals?.total ?? invoice.totalCents) || invoice.totalCents;
+  // Paddle sends `total` in minor units — same as major for zero-decimal
+  // currencies (KRW/JPY/VND/…). Normalise to our internal "always ×100"
+  // convention so stored amounts match what the DB expects for formatting.
+  const paddleRawTotal = Number(data?.details?.totals?.total ?? invoice.totalCents) || invoice.totalCents;
+  const amountPaidCents = apiAmountToInternalCents(paddleRawTotal, invoice.currency);
 
   await prisma.supplierInvoice.update({
     where: { id: invoice.id },
