@@ -228,12 +228,21 @@ export async function POST(request: NextRequest) {
         // Phase G #1: subscription activation. No-op for one-off invoices.
         await onSubscriptionInvoicePaid(invoice.id, paidAt);
         // Ops Telegram ping. Fire-and-forget — a failed notify must not
-        // block Stripe from getting a 200 back.
+        // block Stripe from getting a 200 back. 2026-10-11: pass method
+        // so KakaoPay/UPI get routed to their dedicated bot (telegram-notify
+        // uses the method field for channel routing).
         void notifyInvoicePaid({
           invoiceNumber: invoice.invoiceNumber,
           amountCents: session.amount_total ?? invoice.totalCents,
           currency: invoice.currency,
           processor: "Stripe",
+          method: acquirer.paidMethod || "card",
+          transactionId:
+            typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : session.id,
+          customerEmail: invoice.customerEmail,
+          paidAt,
         });
         // Phase I #3: customer receipt + partner notification emails.
         void fanOutPaidEmails(invoice, session.amount_total ?? invoice.totalCents);
@@ -300,6 +309,10 @@ export async function POST(request: NextRequest) {
           amountCents: intent.amount ?? invoice.totalCents,
           currency: invoice.currency,
           processor: "Stripe",
+          method: acquirer.paidMethod || "card",
+          transactionId: intent.id,
+          customerEmail: invoice.customerEmail,
+          paidAt,
         });
         // Phase I #3: customer receipt + partner notification emails.
         void fanOutPaidEmails(invoice, intent.amount ?? invoice.totalCents);

@@ -58,7 +58,9 @@ export async function POST(
         paymentStatus: true,
         status: true,
         paidAt: true,
+        paidMethod: true,
         paymentLinkId: true,
+        paymentLinkRef: true,
         supplier: {
           select: {
             // Phase I #5 (2026-09-14): id/slug/timezone needed by the
@@ -137,11 +139,18 @@ export async function POST(
       }
 
       // 1) Ops Telegram — always fires (internal ops notification).
+      // 2026-10-11: pass `method` so KakaoPay/UPI route to the right bot.
+      // `paidMethod` is stored by the Stripe branch above and holds the
+      // acquirer-side method (card, upi, kakao_pay, etc.).
       void notifyInvoicePaid({
         invoiceNumber: invoice.invoiceNumber,
         amountCents: invoice.totalCents,
         currency: invoice.currency,
         processor: "Stripe",
+        method: invoice.paidMethod || "card",
+        transactionId: invoice.paymentLinkRef,
+        customerEmail: invoice.customerEmail,
+        paidAt: invoice.paidAt,
       });
 
       // 2) Customer receipt — skipped when API-generated (partner handles).

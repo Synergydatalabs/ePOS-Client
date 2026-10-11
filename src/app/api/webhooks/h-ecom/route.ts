@@ -20,6 +20,11 @@ import prisma from "@/lib/prisma";
 import { kybDecryptJson } from "@/lib/kyb-crypto";
 import { verifyHelcimWebhookSignature } from "@/lib/helcim/client";
 import { fireWebhookForLink } from "@/lib/webhooks/dispatch";
+import {
+  notifyInvoicePaid,
+  notifyPaymentFailed,
+  notifyPaymentRefunded,
+} from "@/lib/telegram-notify";
 import type { HelcimCredentials, HelcimWebhookEvent } from "@/lib/helcim/types";
 
 export const runtime = "nodejs"; // crypto needs node runtime
@@ -172,6 +177,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 2026-10-11: ops Telegram ping. This webhook previously only fired the
+    // outbound partner webhook, so Helcim-tenant payments never showed up
+    // in the ops group — only Stripe-tenant payments did.
+    void notifyInvoicePaid({
+      invoiceNumber: invoice.invoiceNumber,
+      amountCents: invoice.totalCents,
+      currency: invoice.currency,
+      processor: "Helcim",
+      method: "helcim_card",
+      transactionId: txnId,
+      customerEmail: invoice.customerEmail,
+      paidAt: new Date(),
+    });
+
     return NextResponse.json({ received: true, invoiceId: invoice.id });
   }
 
@@ -205,6 +224,16 @@ export async function POST(request: NextRequest) {
         metadata: {},
       });
     }
+
+    void notifyPaymentFailed({
+      invoiceNumber: invoice.invoiceNumber,
+      amountCents: invoice.totalCents,
+      currency: invoice.currency,
+      method: "helcim_card",
+      reason: String(event.data?.status || "Helcim declined"),
+      attemptedAt: new Date(),
+    });
+
     return NextResponse.json({ received: true, note: "payment_failed" });
   }
 
@@ -238,6 +267,15 @@ export async function POST(request: NextRequest) {
         metadata: {},
       });
     }
+
+    void notifyPaymentRefunded({
+      invoiceNumber: invoice.invoiceNumber,
+      amountCents: invoice.totalCents,
+      currency: invoice.currency,
+      method: "helcim_card",
+      refundedAt: new Date(),
+    });
+
     return NextResponse.json({ received: true, note: "refund_recorded" });
   }
 
