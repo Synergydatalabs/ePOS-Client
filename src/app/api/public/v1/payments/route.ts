@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
   // by passing `max_uses` in the request body (integer 1–10000, or 0 for
   // unlimited). The call-once-per-sale pattern still works by setting
   // max_uses: 1 explicitly.
-  const requestedMaxUses = (body as any)?.max_uses;
+  const requestedMaxUses = (raw as any)?.max_uses;
   let maxUsesForLink: number | null = 100;
   if (requestedMaxUses === 0 || requestedMaxUses === null) {
     maxUsesForLink = null; // unlimited
