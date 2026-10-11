@@ -326,6 +326,15 @@ export default function PaymentLinkCheckout() {
         autoFlow: "kakao",
       };
       if (embedMode) body.embed = true;
+
+      // 2026-10-11: B2B tax exemption. Merchant can embed business name +
+      // tax identifier in the QR URL (?bizName=...&taxId=...) so Paddle
+      // zero-rates the invoice. Only forward when BOTH are present.
+      const bizName = search?.get("bizName")?.trim();
+      const taxId = search?.get("taxId")?.trim();
+      if (bizName && taxId) {
+        body.business = { name: bizName, tax_identifier: taxId };
+      }
       const res = await fetch(`/api/public/payment-links/${slug}/paddle-start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

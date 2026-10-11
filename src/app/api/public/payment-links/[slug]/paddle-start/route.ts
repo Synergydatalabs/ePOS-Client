@@ -156,6 +156,22 @@ export async function POST(
     // page after they pay. Paddle appends `?_ptxn=<txn_id>` automatically.
     const checkoutPageUrl = `${originHost}/paddle-checkout?invoiceId=${invoice.id}${embedMode ? "&embed=1" : ""}`;
 
+    // 2026-10-11: B2B tax-exemption. When the caller (QR URL or API)
+    // passes both business.name AND business.tax_identifier, we route
+    // through Paddle's business flow so the tax ID is validated and the
+    // invoice is zero-rated for recognised numbers.
+    const businessName = typeof body?.business?.name === "string"
+      ? body.business.name.trim()
+      : "";
+    const businessTaxId = typeof body?.business?.tax_identifier === "string"
+      ? body.business.tax_identifier.trim()
+      : typeof body?.business?.taxIdentifier === "string"
+        ? body.business.taxIdentifier.trim()
+        : "";
+    const businessPayload = businessName && businessTaxId
+      ? { name: businessName, taxIdentifier: businessTaxId }
+      : undefined;
+
     const txn = await createPaddleTransaction({
       invoiceId: invoice.id,
       amountCents: invoice.totalCents,
@@ -163,6 +179,7 @@ export async function POST(
       customerEmail: emailRaw,
       description: `Invoice ${invoice.invoiceNumber}`,
       checkoutPageUrl,
+      business: businessPayload,
     });
 
     // Stash the Paddle transaction id on the invoice so the webhook can
