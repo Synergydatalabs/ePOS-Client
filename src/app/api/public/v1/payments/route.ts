@@ -129,12 +129,12 @@ export async function POST(request: NextRequest) {
   }
 
   // 3) Validate required fields
-  const amount = Number(raw.amount);
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return badRequest("`amount` must be a positive integer (cents)", "amount");
-  }
-  if (amount > MAX_AMOUNT_CENTS) {
-    return badRequest(`\`amount\` exceeds max of ${MAX_AMOUNT_CENTS} cents`, "amount");
+  const amountInput = Number(raw.amount);
+  if (!Number.isInteger(amountInput) || amountInput <= 0) {
+    return badRequest(
+      "`amount` must be a positive integer. For sub-unit currencies (USD/CAD/EUR/INR/…) send cents (e.g. $10.00 → 1000). For zero-decimal currencies (KRW/JPY/VND/…) send native units (e.g. ₩1,000 → 1000).",
+      "amount"
+    );
   }
 
   const currency = typeof raw.currency === "string" && raw.currency.trim()
@@ -142,6 +142,19 @@ export async function POST(request: NextRequest) {
     : "CAD";
   if (!CURRENCY_RE.test(currency)) {
     return badRequest("`currency` must be an ISO 4217 alpha-3 code", "currency");
+  }
+
+  // 2026-10-11: convert API-caller amount to internal cents representation.
+  // For zero-decimal currencies (KRW/JPY/…) the caller sends native units
+  // and we multiply by 100 to keep our DB uniformly in "cents". For
+  // sub-unit currencies the caller already sends cents.
+  const { apiAmountToInternalCents } = await import("@/lib/currency/zero-decimal");
+  const amount = apiAmountToInternalCents(amountInput, currency);
+  if (amount > MAX_AMOUNT_CENTS) {
+    return badRequest(
+      `\`amount\` after currency normalisation exceeds the max of ${MAX_AMOUNT_CENTS}`,
+      "amount"
+    );
   }
 
   if (!raw.customer || typeof raw.customer !== "object") {
@@ -389,7 +402,10 @@ export async function POST(request: NextRequest) {
     {
       id: invoiceId ?? link.id,
       status: "created",
-      amount,
+      // 2026-10-11: echo amount in the SAME unit the caller used — native
+      // units for zero-decimal currencies, cents for sub-unit ones. Caller
+      // sees `amount: 1000` for ₩1,000 roundtripping cleanly.
+      amount: amountInput,
       currency: currency.toLowerCase(),
       checkout_url: checkoutUrl,
       ...(embedUrl ? { embed_url: embedUrl } : {}),

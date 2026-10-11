@@ -14,6 +14,10 @@
 
 import type { WebhookContext } from "./render";
 import { randomBytes } from "crypto";
+import {
+  internalCentsToApiAmount,
+  isZeroDecimalCurrency,
+} from "@/lib/currency/zero-decimal";
 
 export type WebhookEventType =
   | "payment.succeeded"
@@ -133,8 +137,14 @@ export function buildWebhookContext(args: BuildContextArgs): WebhookContext {
     },
     payment: {
       id: args.payment.id,
-      amount: args.payment.amount,
-      amount_decimal: args.payment.amount / 100,
+      // 2026-10-11: `amount` now echoes the same unit the API caller used
+      // when creating the invoice — native units for zero-decimal currencies
+      // (₩1,000 → 1000, not 100000), cents for sub-unit ones. `amount_decimal`
+      // stays as the correctly-scaled float ($10.00 → 10.00).
+      amount: internalCentsToApiAmount(args.payment.amount, args.payment.currency),
+      amount_decimal:
+        args.payment.amount /
+        (isZeroDecimalCurrency(args.payment.currency) ? 1 : 100),
       currency: args.payment.currency.toLowerCase(),
       status: args.payment.status,
       paid_at: args.payment.paidAt?.toISOString() ?? null,
