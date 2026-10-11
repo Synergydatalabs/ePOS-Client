@@ -15,7 +15,7 @@
 # ============================================================================
 
 param(
-    [string]$ApiHost = "http://localhost:4005",
+    [string]$ApiHost = "http://localhost:4003",
     [string]$Secret = "",
     [int]$Limit = 20,
     [int]$SinceDays = 7
