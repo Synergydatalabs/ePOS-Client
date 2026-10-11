@@ -93,5 +93,32 @@ export async function POST(request: NextRequest) {
     `[PADDLE-WEBHOOK] invoice ${invoice.id} marked PAID via ${methodType} (txn ${txnId})`
   );
 
+  // 2026-10-11: fire Telegram notification. Routes to the KakaoPay bot
+  // when method is kakao_pay; everything else goes to the default bot.
+  try {
+    const { notifyInvoicePaid } = await import("@/lib/telegram-notify");
+    const freshInvoice = await prisma.supplierInvoice.findUnique({
+      where: { id: invoice.id },
+      select: {
+        invoiceNumber: true,
+        customerEmail: true,
+      },
+    });
+    if (freshInvoice) {
+      void notifyInvoicePaid({
+        invoiceNumber: freshInvoice.invoiceNumber,
+        amountCents: amountPaidCents,
+        currency: invoice.currency,
+        processor: "Paddle",
+        method: methodType,
+        transactionId: txnId || null,
+        customerEmail: freshInvoice.customerEmail,
+        paidAt: new Date(),
+      });
+    }
+  } catch (notifyErr) {
+    console.warn("[PADDLE-WEBHOOK] telegram notify failed (continuing):", notifyErr);
+  }
+
   return NextResponse.json({ ok: true, paid: true });
 }
