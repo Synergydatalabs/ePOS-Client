@@ -17,7 +17,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { notifyInvoicePaid } from "@/lib/telegram-notify";
+import { notifyInvoicePaid, notifyKakaoTotal } from "@/lib/telegram-notify";
 
 export async function POST(request: NextRequest) {
   // Auth: shared secret (same one used by scheduled cron hits).
@@ -68,9 +68,20 @@ export async function POST(request: NextRequest) {
     method: string | null;
     routed: "kakao" | "default";
     ok: boolean;
+    kakoTotalFired?: boolean;
   }> = [];
 
-  for (const inv of invoices) {
+  // 2026-10-12: KakoTotal replay — accumulate running total per currency
+  // chronologically (oldest first) so the final message in the KakoTotal
+  // group shows the correct cumulative total, matching what would appear
+  // if these payments had come in via live webhook. Iterate oldest-first
+  // for this reason.
+  const chronological = [...invoices].sort((a, b) =>
+    (a.paidAt?.getTime() ?? 0) - (b.paidAt?.getTime() ?? 0)
+  );
+  const runningByCurrency = new Map<string, number>();
+
+  for (const inv of chronological) {
     const method = (inv.paidMethod || "").toLowerCase();
     // Flatten "paddle_kakao_pay" → "kakao_pay" so routing matches.
     const normalisedMethod = method
@@ -95,9 +106,11 @@ export async function POST(request: NextRequest) {
             ? "Moneris"
             : "Processor";
 
+    const amount = inv.amountPaidCents ?? inv.totalCents;
+
     const ok = await notifyInvoicePaid({
       invoiceNumber: inv.invoiceNumber,
-      amountCents: inv.amountPaidCents ?? inv.totalCents,
+      amountCents: amount,
       currency: inv.currency,
       processor,
       method: normalisedMethod,
@@ -106,11 +119,33 @@ export async function POST(request: NextRequest) {
       paidAt: inv.paidAt,
     });
 
+    // 2026-10-12: for Kakao payments ALSO fire the KakoTotal running-total
+    // notification so the dedicated balance-tracking group gets backfilled
+    // in sync with the per-payment group.
+    let kakoTotalFired = false;
+    if (routed === "kakao") {
+      const prevTotal = runningByCurrency.get(inv.currency) ?? 0;
+      const newTotal = prevTotal + amount;
+      runningByCurrency.set(inv.currency, newTotal);
+      kakoTotalFired = await notifyKakaoTotal({
+        kind: "payment",
+        amountCents: amount,
+        currency: inv.currency,
+        runningTotalCents: newTotal,
+        invoiceNumber: inv.invoiceNumber,
+        transactionId: inv.paymentLinkRef,
+        occurredAt: inv.paidAt,
+      });
+      // Second message in the same tick — honour the rate limit.
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
     results.push({
       invoice: inv.invoiceNumber,
       method: inv.paidMethod,
       routed,
       ok,
+      kakoTotalFired,
     });
 
     // Small delay to stay well under Telegram's 30 msg/sec rate limit.
