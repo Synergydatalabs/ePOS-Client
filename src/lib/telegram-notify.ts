@@ -233,6 +233,64 @@ export async function notifyPaymentFailed(params: {
 }
 
 /**
+ * 2026-10-12: KakoTotal bot — tracks running Kakao payment totals and
+ * Paddle payout (withdrawal) events in its own group. Separate from the
+ * KakaoPay payment-event bot so you can mute transaction noise but still
+ * see balance movements.
+ */
+export async function notifyKakaoTotal(params: {
+  kind: "payment" | "payout";
+  amountCents: number;
+  currency: string;
+  runningTotalCents?: number | null;
+  invoiceNumber?: string | null;
+  transactionId?: string | null;
+  payoutStatus?: "created" | "paid" | null;
+  payoutId?: string | null;
+  occurredAt?: Date | null;
+}): Promise<boolean> {
+  const token = process.env.TELEGRAM_KAKAOTOTAL_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_KAKAOTOTAL_CHAT_ID;
+  if (!token || !chatId) {
+    console.warn("[telegram-notify] KakoTotal event but TELEGRAM_KAKAOTOTAL_* env vars missing");
+    return false;
+  }
+
+  const when = (params.occurredAt || new Date()).toISOString();
+
+  if (params.kind === "payment") {
+    const lines = [
+      `💰 <b>KakaoPay payment received</b>`,
+      ``,
+      `Amount: ${escapeHtml(formatMoney(params.amountCents, params.currency))}`,
+      ...(params.invoiceNumber ? [`Invoice: ${escapeHtml(params.invoiceNumber)}`] : []),
+      ...(params.transactionId ? [`Transaction: ${escapeHtml(params.transactionId)}`] : []),
+      ...(params.runningTotalCents != null
+        ? [``, `<b>Running total: ${escapeHtml(formatMoney(params.runningTotalCents, params.currency))}</b>`]
+        : []),
+      `At: ${when}`,
+    ];
+    return sendTelegramMessage(token, chatId, lines.join("\n"), "HTML");
+  }
+
+  // payout branch — withdrawal from Paddle balance
+  const headline = params.payoutStatus === "paid"
+    ? "🏦 <b>Payout completed</b>"
+    : "🏦 <b>Payout initiated</b>";
+  const lines = [
+    headline,
+    ``,
+    `Amount withdrawn: ${escapeHtml(formatMoney(params.amountCents, params.currency))}`,
+    ...(params.payoutId ? [`Payout: ${escapeHtml(params.payoutId)}`] : []),
+    ...(params.runningTotalCents != null
+      ? [``, `<b>Remaining balance: ${escapeHtml(formatMoney(params.runningTotalCents, params.currency))}</b>`]
+      : []),
+    `At: ${when}`,
+  ];
+  return sendTelegramMessage(token, chatId, lines.join("\n"), "HTML");
+}
+
+/**
  * Payment refunded notification. Routes by method.
  */
 export async function notifyPaymentRefunded(params: {

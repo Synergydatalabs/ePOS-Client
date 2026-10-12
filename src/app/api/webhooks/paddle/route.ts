@@ -37,6 +37,31 @@ export async function POST(request: NextRequest) {
   const eventType: string = event?.event_type || event?.eventType || "";
   const data = event?.data || {};
 
+  // 2026-10-12: payout events — withdrawals from the Paddle balance.
+  // Fire the KakoTotal notifier so the ops group sees balance movements.
+  // Subscribe to `payout.created` + `payout.paid` in the Paddle dashboard
+  // to receive these; without the subscription, Paddle won't call us.
+  if (eventType === "payout.created" || eventType === "payout.paid") {
+    try {
+      const { notifyKakaoTotal } = await import("@/lib/telegram-notify");
+      const { apiAmountToInternalCents } = await import("@/lib/currency/zero-decimal");
+      const payoutCurrency = String(data?.currency_code || data?.currencyCode || "KRW").toUpperCase();
+      const payoutRaw = Number(data?.amount ?? data?.totals?.total ?? 0);
+      const payoutInternalCents = apiAmountToInternalCents(payoutRaw, payoutCurrency);
+      void notifyKakaoTotal({
+        kind: "payout",
+        amountCents: payoutInternalCents,
+        currency: payoutCurrency,
+        payoutStatus: eventType === "payout.paid" ? "paid" : "created",
+        payoutId: String(data?.id || ""),
+        occurredAt: new Date(),
+      });
+    } catch (err) {
+      console.warn("[PADDLE-WEBHOOK] payout notify failed (continuing):", err);
+    }
+    return NextResponse.json({ ok: true, payout: eventType });
+  }
+
   // We only act on completion. Everything else — created, updated,
   // past_due, etc. — gets a 200 so Paddle stops redelivering.
   if (eventType !== "transaction.completed") {
@@ -100,8 +125,12 @@ export async function POST(request: NextRequest) {
 
   // 2026-10-11: fire Telegram notification. Routes to the KakaoPay bot
   // when method is kakao_pay; everything else goes to the default bot.
+  //
+  // 2026-10-12: ALSO fire KakoTotal notification with running total of all
+  // paid Paddle Kakao payments in this currency. Separate bot/group so
+  // ops can watch balance movements without the per-transaction noise.
   try {
-    const { notifyInvoicePaid } = await import("@/lib/telegram-notify");
+    const { notifyInvoicePaid, notifyKakaoTotal } = await import("@/lib/telegram-notify");
     const freshInvoice = await prisma.supplierInvoice.findUnique({
       where: { id: invoice.id },
       select: {
@@ -120,6 +149,38 @@ export async function POST(request: NextRequest) {
         customerEmail: freshInvoice.customerEmail,
         paidAt: new Date(),
       });
+
+      // Compute running total for THIS currency across all Paddle Kakao
+      // paid invoices. Sum from the DB; drift vs Paddle's actual balance
+      // is possible if Paddle charges fees not reflected in our rows,
+      // but it's close enough for an at-a-glance ops view.
+      const isKakao =
+        methodType.toLowerCase().includes("kakao") ||
+        methodType.toLowerCase() === "kakao_pay";
+      if (isKakao) {
+        try {
+          const sum = await prisma.supplierInvoice.aggregate({
+            _sum: { amountPaidCents: true },
+            where: {
+              paymentStatus: "PAID",
+              currency: invoice.currency,
+              paidMethod: { startsWith: "paddle_kakao" },
+            },
+          });
+          const runningTotal = sum._sum.amountPaidCents ?? 0;
+          void notifyKakaoTotal({
+            kind: "payment",
+            amountCents: amountPaidCents,
+            currency: invoice.currency,
+            runningTotalCents: runningTotal,
+            invoiceNumber: freshInvoice.invoiceNumber,
+            transactionId: txnId || null,
+            occurredAt: new Date(),
+          });
+        } catch (totalErr) {
+          console.warn("[PADDLE-WEBHOOK] running-total notify failed:", totalErr);
+        }
+      }
     }
   } catch (notifyErr) {
     console.warn("[PADDLE-WEBHOOK] telegram notify failed (continuing):", notifyErr);
