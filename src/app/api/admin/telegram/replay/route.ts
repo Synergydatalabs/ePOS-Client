@@ -136,8 +136,8 @@ export async function POST(request: NextRequest) {
         transactionId: inv.paymentLinkRef,
         occurredAt: inv.paidAt,
       });
-      // Second message in the same tick — honour the rate limit.
-      await new Promise((r) => setTimeout(r, 150));
+      // Second message in the same tick — honour the per-group rate limit.
+      await new Promise((r) => setTimeout(r, 3000));
     }
 
     results.push({
@@ -148,8 +148,10 @@ export async function POST(request: NextRequest) {
       kakoTotalFired,
     });
 
-    // Small delay to stay well under Telegram's 30 msg/sec rate limit.
-    await new Promise((r) => setTimeout(r, 150));
+    // Telegram enforces ~20 messages/minute PER GROUP (3-second gap is
+    // safe). Our previous 150ms delay (~400/min) hit the per-group cap
+    // after ~20 messages and the rest 429'd. Use 3s between messages.
+    await new Promise((r) => setTimeout(r, 3000));
   }
 
   const summary = {
