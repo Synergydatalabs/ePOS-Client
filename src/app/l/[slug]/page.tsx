@@ -617,7 +617,13 @@ export default function PaymentLinkCheckout() {
   // "Opening KakaoPay…" screen for ~500-1500ms before Paddle takes
   // over and deep-links the KakaoPay app on their phone. On error we
   // show a retry hint so a flaky network doesn't dead-end the flow.
-  if (autoKakao) {
+  //
+  // 2026-10-20: fall through to the regular availability branch when the
+  // link is disabled / expired / at_capacity. Previously the splash would
+  // render on top of a disabled link, misleading customers into thinking
+  // the payment was mid-flight; the useEffect correctly refused to fire
+  // startAutoKakao, so the yellow splash just sat there forever.
+  if (autoKakao && data && data.available) {
     const splashError = loadError || paddleError;
     return (
       <AutoKakaoSplash
